@@ -846,7 +846,7 @@ function App() {
                                 textAnchor="middle"
                                 style={{ fontSize: '9px', fill: machineStatus ? 'white' : '#059669', pointerEvents: 'none', fontWeight: '600' }}
                               >
-                                {getMemberEPF(assignedMemberIds[0]).substring(0, 8)}
+                               zone.zone_name?.substring(0, 10) || ""
                               </text>
                             )}
                           </g>
