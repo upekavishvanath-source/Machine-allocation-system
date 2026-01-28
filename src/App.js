@@ -21,7 +21,6 @@ function App() {
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [activeStatusFilter, setActiveStatusFilter] = useState(null);
 
-  // Fixed zones configuration
   const FIXED_ZONES = [
     { id: 1, name: 'Zone A', machines: ['MJ-06', 'MJ-14', 'MJ-09', 'MJ-16'], color: '#fef3c7' },
     { id: 2, name: 'Zone B', machines: ['MS-03', 'JL-07', 'JL-08', 'TL-01'], color: '#dbeafe' },
@@ -32,7 +31,6 @@ function App() {
     { id: 7, name: 'Zone G', machines: ['JL-06', 'JC-03', 'JC-01', 'JC-02'], color: '#fef08a' }
   ];
 
-  // Machine status colors
   const STATUS_COLORS = {
     'no-order': '#92400e',
     'development': '#eab308',
@@ -40,7 +38,6 @@ function App() {
     'alteration': '#ef4444'
   };
 
-  // Initialize machines on mount
   useEffect(() => {
     const MACHINE_LAYOUT = [
       { id: 'JQ-1', x: 80, y: 60 },
@@ -54,7 +51,6 @@ function App() {
       { id: 'MJ-16', x: 80, y: 860 },
       { id: 'MJ-10', x: 80, y: 960 },
       { id: 'MJ-06', x: 80, y: 1060 },
-
       { id: 'MJ-11', x: 200, y: 60 },
       { id: 'MS-01', x: 200, y: 160 },
       { id: 'MS-03', x: 200, y: 260 },
@@ -66,11 +62,9 @@ function App() {
       { id: 'ML-08', x: 200, y: 860 },
       { id: 'MJ-09', x: 200, y: 960 },
       { id: 'MJ-14', x: 200, y: 1060 },
-      
       { id: 'MJ-12', x: 320, y: 60 },
       { id: 'TX-02', x: 440, y: 60 },
       { id: 'MJ-15', x: 560, y: 60 },
-
       { id: 'MJ-05', x: 500, y: 160 },
       { id: 'MJ-04', x: 600, y: 160 },
       { id: 'MJ-13', x: 500, y: 240 },
@@ -81,7 +75,6 @@ function App() {
       { id: 'MJ-01', x: 600, y: 400 },
       { id: 'JT-14', x: 700, y: 340 },
       { id: 'JT-16', x: 700, y: 440 },
-
       { id: 'JC-02', x: 700, y: 960 },
       { id: 'JC-01', x: 700, y: 880 },
       { id: 'JC-03', x: 700, y: 800 },
@@ -100,7 +93,7 @@ function App() {
 
   const initializeFixedZones = async () => {
     try {
-      await supabase.from('zones').delete().neq('id', 0);
+      await supabase.from('zones').update().neq('id', 0);
       
       for (const zone of FIXED_ZONES) {
         const { data: zoneData, error: zoneError } = await supabase
@@ -287,8 +280,8 @@ function App() {
 
   const removeTeamMember = async (id) => {
     try {
-      await supabase.from('allocations').delete().eq('worker_id', id);
-      const { error } = await supabase.from('workers').delete().eq('id', id);
+      await supabase.from('allocations').update().eq('worker_id', id);
+      const { error } = await supabase.from('workers').update().eq('id', id);
       if (error) throw error;
 
       setShiftData(prev => ({
@@ -349,7 +342,7 @@ function App() {
       if (memberId === null) {
         await supabase
           .from('allocations')
-          .delete()
+          .update()
           .eq('machine_id', machineData.id)
           .eq('shift', activeShift);
       } else {
@@ -358,7 +351,7 @@ function App() {
         if (currentAssignments.includes(memberId)) {
           await supabase
             .from('allocations')
-            .delete()
+            .update()
             .eq('machine_id', machineData.id)
             .eq('worker_id', memberId)
             .eq('shift', activeShift);
@@ -399,7 +392,7 @@ function App() {
         if (status === null) {
           await supabase
             .from('machine_statuses')
-            .delete()
+            .update()
             .eq('machine_name', machineName);
         } else {
           await supabase
@@ -467,48 +460,31 @@ function App() {
     return labels[shift];
   };
 
-  // Draw zone connections - MANUAL CONFIGURATION
   const drawZoneConnections = () => {
     const connections = [];
     
-    // MANUAL CONNECTIONS - Define exactly which machines connect to which
-    // You can modify this array to change the connection pattern
     const manualConnections = [
-      // Zone A - Chain connections (MJ-06 -> MJ-14 -> MJ-09 -> MJ-10)
       { from: 'MJ-06', to: 'MJ-14', color: '#1138e2', width: 3 },
       { from: 'MJ-14', to: 'MJ-09', color: '#3b82f6', width: 3 },
       { from: 'MJ-09', to: 'MJ-16', color: '#3b82f6', width: 3 },
-      
-      // Zone B - Chain connections (MS-03 -> JL-07 -> JL-08 -> TL-01)
       { from: 'MS-03', to: 'JL-07', color: '#3b82f6', width: 3 },
       { from: 'JL-07', to: 'JL-08', color: '#3b82f6', width: 3 },
       { from: 'JL-08', to: 'TL-01', color: '#3b82f6', width: 3 },
-      
-      // Zone C - Chain connections (MJ-15 -> MJ-05 -> MJ-04)
       { from: 'MJ-15', to: 'MJ-05', color: '#3b82f6', width: 3 },
       { from: 'MJ-05', to: 'MJ-04', color: '#3b82f6', width: 3 },
-      
-      // Zone D - Chain connections (MJ-02 -> MJ-07 -> MJ-13 -> MJ-03)
       { from: 'MJ-02', to: 'MJ-07', color: '#0762f3', width: 3 },
       { from: 'MJ-07', to: 'MJ-13', color: '#3b82f6', width: 3 },
       { from: 'MJ-13', to: 'MJ-03', color: '#3b82f6', width: 3 },
-      
-      // Zone E - Chain connections (MJ-08 -> MJ-01 -> JT-16)
       { from: 'MJ-08', to: 'MJ-01', color: '#3b82f6', width: 3 },
       { from: 'MJ-01', to: 'JT-16', color: '#3b82f6', width: 3 },
-      
-      // Zone F - Chain connections (TX-10 -> JL-04 -> JL-02 -> JL-05)
       { from: 'TX-10', to: 'JL-02', color: '#3b82f6', width: 3 },
       { from: 'JL-02', to: 'JL-04', color: '#3b82f6', width: 3 },
       { from: 'JL-04', to: 'JL-05', color: '#3b82f6', width: 3 },
-      
-      // Zone G - Chain connections (JL-06 -> JC-03 -> JC-01 -> JC-02)
       { from: 'JL-06', to: 'JC-03', color: '#3b82f6', width: 3 },
       { from: 'JC-03', to: 'JC-01', color: '#3b82f6', width: 3 },
       { from: 'JC-01', to: 'JC-02', color: '#3b82f6', width: 3 },
     ];
     
-    // Draw the manual connections
     manualConnections.forEach((conn, index) => {
       const fromMachine = machines.find(m => m.id === conn.from);
       const toMachine = machines.find(m => m.id === conn.to);
@@ -529,19 +505,16 @@ function App() {
       }
     });
     
-    // MANUAL ZONE LABEL POSITIONS
-    // You can adjust x and y coordinates to position labels wherever you want
     const zoneLabelPositions = {
-      1: { x: 280, y: 1000 },  // Zone A - between MJ-06, MJ-14, MJ-09, MJ-10
-      2: { x: 280, y: 400 },   // Zone B - between MS-03, JL-07, JL-08, TL-01
-      3: { x: 650, y: 100 },   // Zone C - near MJ-15, MJ-05, MJ-04
-      4: { x: 800, y: 280 },   // Zone D - between MJ-02, MJ-07, MJ-13, MJ-03
-      5: { x: 800, y: 450 },   // Zone E - near MJ-08, MJ-01, JT-16
-      6: { x: 800, y: 590 },   // Zone F - near TX-10, JL-04, JL-02, JL-05
-      7: { x: 800, y: 850 }    // Zone G - near JL-06, JC-03, JC-01, JC-02
+      1: { x: 280, y: 1000 },
+      2: { x: 280, y: 400 },
+      3: { x: 650, y: 100 },
+      4: { x: 800, y: 280 },
+      5: { x: 800, y: 450 },
+      6: { x: 800, y: 590 },
+      7: { x: 800, y: 850 }
     };
     
-    // Draw zone labels at custom positions
     zones.forEach(zone => {
       if (zoneLabelPositions[zone.id]) {
         connections.push(
@@ -846,7 +819,7 @@ function App() {
                                 textAnchor="middle"
                                 style={{ fontSize: '9px', fill: machineStatus ? 'white' : '#059669', pointerEvents: 'none', fontWeight: '600' }}
                               >
-                               zone.zone_name?.substring(0, 10) || ""
+                                {getMemberEPF(assignedMemberIds[0]).substring(0, 8)}
                               </text>
                             )}
                           </g>
