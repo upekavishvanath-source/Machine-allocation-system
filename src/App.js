@@ -94,15 +94,16 @@ function App() {
   const initializeFixedZones = async () => {
     try {
       for (const zone of FIXED_ZONES) {
-        const { data: zoneData, error: zoneError } = await supabase
+        const { data: existingZone } = await supabase
           .from('zones')
-          .upsert([{ id: zone.id, zone_name: zone.name }], { onConflict: 'id' })
-          .select()
+          .select('id')
+          .eq('id', zone.id)
           .single();
 
-        if (zoneError && zoneError.code !== '23505') {
-          console.error('Error creating zone:', zoneError);
-          continue;
+        if (!existingZone) {
+          await supabase
+            .from('zones')
+            .insert([{ id: zone.id, zone_name: zone.name }]);
         }
 
         for (const machineName of zone.machines) {
@@ -113,12 +114,9 @@ function App() {
             .single();
 
           if (machineError && machineError.code === 'PGRST116') {
-            const { data: newMachine } = await supabase
+            await supabase
               .from('machines')
-              .insert([{ machine_name: machineName, zone_id: zone.id }])
-              .select()
-              .single();
-            machineData = newMachine;
+              .insert([{ machine_name: machineName, zone_id: zone.id }]);
           } else if (machineData) {
             await supabase
               .from('machines')
@@ -151,11 +149,9 @@ function App() {
   };
 
   const loadWorkers = async () => {
-    // Load only active workers (is_active = true or null for backwards compatibility)
     const { data, error } = await supabase
       .from('workers')
-      .select('*')
-      .or('is_active.is.null,is_active.eq.true');
+      .select('*');
     
     if (error) {
       console.error('Error loading workers:', error);
@@ -186,11 +182,9 @@ function App() {
   };
 
   const loadAllocations = async () => {
-    // Load only active allocations (is_active = true or null for backwards compatibility)
     const { data, error } = await supabase
       .from('allocations')
-      .select('*')
-      .or('is_active.is.null,is_active.eq.true');
+      .select('*');
     
     if (error) {
       console.error('Error loading allocations:', error);
@@ -229,11 +223,9 @@ function App() {
   };
 
   const loadMachineStatuses = async () => {
-    // Load only active machine statuses (is_active = true or null for backwards compatibility)
     const { data, error } = await supabase
       .from('machine_statuses')
-      .select('*')
-      .or('is_active.is.null,is_active.eq.true');
+      .select('*');
     
     if (error) {
       console.error('Error loading machine statuses:', error);
@@ -254,50 +246,27 @@ function App() {
   const addTeamMember = async () => {
     if (newMemberEPF.trim()) {
       try {
-        // Check if worker exists but is inactive
-        const { data: existingWorker } = await supabase
+        // Always insert new worker - database saves permanently
+        const { data, error } = await supabase
           .from('workers')
-          .select('*')
-          .eq('worker_name', newMemberEPF.trim())
-          .eq('shift', activeShift)
-          .eq('is_active', false)
-          .single();
+          .insert([
+            { worker_name: newMemberEPF.trim(), shift: activeShift }
+          ])
+          .select();
 
-        let savedWorker;
-        
-        if (existingWorker) {
-          // Reactivate existing worker
-          const { data, error } = await supabase
-            .from('workers')
-            .update({ is_active: true })
-            .eq('id', existingWorker.id)
-            .select();
+        if (error) throw error;
 
-          if (error) throw error;
-          savedWorker = data[0];
-        } else {
-          // Insert new worker with is_active = true
-          const { data, error } = await supabase
-            .from('workers')
-            .insert([
-              { worker_name: newMemberEPF.trim(), shift: activeShift, is_active: true }
-            ])
-            .select();
-
-          if (error) throw error;
-          savedWorker = data[0];
-        }
-
-        if (savedWorker) {
+        if (data && data[0]) {
+          // Update UI to show the new member
           setShiftData(prev => ({
             ...prev,
             [activeShift]: {
               ...prev[activeShift],
-              teamMembers: [...prev[activeShift].teamMembers, { id: savedWorker.id, epf: savedWorker.worker_name }]
+              teamMembers: [...prev[activeShift].teamMembers, { id: data[0].id, epf: data[0].worker_name }]
             }
           }));
           setNewMemberEPF('');
-          setSaveStatus('✅ Team member added');
+          setSaveStatus('✅ Team member added & saved to database');
           setTimeout(() => setSaveStatus(''), 2000);
         }
       } catch (error) {
@@ -309,20 +278,9 @@ function App() {
 
   const removeTeamMember = async (id) => {
     try {
-      // Mark allocations as inactive instead of deleting
-      await supabase
-        .from('allocations')
-        .update({ is_active: false })
-        .eq('worker_id', id);
+      // Only remove from UI - database keeps the history
+      // No database delete operation here
       
-      // Mark worker as inactive instead of deleting
-      const { error } = await supabase
-        .from('workers')
-        .update({ is_active: false })
-        .eq('id', id);
-        
-      if (error) throw error;
-
       // Update UI to remove from display
       setShiftData(prev => ({
         ...prev,
@@ -332,6 +290,7 @@ function App() {
         }
       }));
 
+      // Remove from assignments in UI
       const newAssignments = { ...shiftData[activeShift].assignments };
       Object.keys(newAssignments).forEach(machineId => {
         if (Array.isArray(newAssignments[machineId])) {
@@ -350,7 +309,7 @@ function App() {
         }
       }));
 
-      setSaveStatus('✅ Team member removed (kept in history)');
+      setSaveStatus('✅ Removed from UI (kept in database history)');
       setTimeout(() => setSaveStatus(''), 2000);
     } catch (error) {
       console.error('Error removing team member:', error);
@@ -380,51 +339,32 @@ function App() {
       if (!machineData) throw new Error('Machine not found');
 
       if (memberId === null) {
-        // Mark all assignments for this machine and shift as inactive
+        // Clear all assignments - save to database permanently
         await supabase
           .from('allocations')
-          .update({ is_active: false })
+          .delete()
           .eq('machine_id', machineData.id)
           .eq('shift', activeShift);
       } else {
         const currentAssignments = shiftData[activeShift].assignments[machineName] || [];
         
         if (currentAssignments.includes(memberId)) {
-          // Mark this specific assignment as inactive
+          // Remove assignment - save to database permanently
           await supabase
             .from('allocations')
-            .update({ is_active: false })
+            .delete()
             .eq('machine_id', machineData.id)
             .eq('worker_id', memberId)
             .eq('shift', activeShift);
         } else if (currentAssignments.length < 5) {
-          // Check if this assignment exists but is inactive
-          const { data: existingAllocation } = await supabase
+          // Add assignment - save to database permanently
+          await supabase
             .from('allocations')
-            .select('*')
-            .eq('machine_id', machineData.id)
-            .eq('worker_id', memberId)
-            .eq('shift', activeShift)
-            .eq('is_active', false)
-            .single();
-
-          if (existingAllocation) {
-            // Reactivate existing allocation
-            await supabase
-              .from('allocations')
-              .update({ is_active: true })
-              .eq('id', existingAllocation.id);
-          } else {
-            // Insert new allocation with is_active = true
-            await supabase
-              .from('allocations')
-              .insert([{
-                machine_id: machineData.id,
-                worker_id: memberId,
-                shift: activeShift,
-                is_active: true
-              }]);
-          }
+            .insert([{
+              machine_id: machineData.id,
+              worker_id: memberId,
+              shift: activeShift
+            }]);
         } else {
           setSaveStatus('⚠️ Maximum 5 members per machine');
           setTimeout(() => setSaveStatus(''), 2000);
@@ -432,9 +372,10 @@ function App() {
         }
       }
 
+      // Reload allocations to update UI
       await loadAllocations();
 
-      setSaveStatus('✅ Assignment saved');
+      setSaveStatus('✅ Assignment saved to database');
       setTimeout(() => setSaveStatus(''), 2000);
     } catch (error) {
       console.error('Error assigning member:', error);
@@ -446,47 +387,32 @@ function App() {
     try {
       const { data: existingStatus } = await supabase
         .from('machine_statuses')
-        .select('id, is_active')
+        .select('id')
         .eq('machine_name', machineName)
         .single();
 
       if (existingStatus) {
         if (status === null) {
-          // Mark status as inactive instead of deleting
+          // Delete from database permanently
           await supabase
             .from('machine_statuses')
-            .update({ is_active: false })
+            .delete()
             .eq('machine_name', machineName);
         } else {
-          // Update status and ensure it's active
+          // Update status in database permanently
           await supabase
             .from('machine_statuses')
-            .update({ status, is_active: true })
+            .update({ status })
             .eq('machine_name', machineName);
         }
       } else if (status !== null) {
-        // Check if inactive status exists
-        const { data: inactiveStatus } = await supabase
+        // Insert new status into database permanently
+        await supabase
           .from('machine_statuses')
-          .select('id')
-          .eq('machine_name', machineName)
-          .eq('is_active', false)
-          .single();
-
-        if (inactiveStatus) {
-          // Reactivate and update
-          await supabase
-            .from('machine_statuses')
-            .update({ status, is_active: true })
-            .eq('id', inactiveStatus.id);
-        } else {
-          // Insert new status with is_active = true
-          await supabase
-            .from('machine_statuses')
-            .insert([{ machine_name: machineName, status, is_active: true }]);
-        }
+          .insert([{ machine_name: machineName, status }]);
       }
 
+      // Update UI
       setMachineStatuses(prev => {
         const newStatuses = { ...prev };
         if (status === null) {
@@ -497,7 +423,7 @@ function App() {
         return newStatuses;
       });
 
-      setSaveStatus('✅ Machine status updated');
+      setSaveStatus('✅ Machine status saved to database');
       setTimeout(() => setSaveStatus(''), 2000);
     } catch (error) {
       console.error('Error setting machine status:', error);
@@ -506,38 +432,12 @@ function App() {
   };
 
   const clearMap = async () => {
-    if (window.confirm('Clear all allocations and statuses from the map? (Data will be kept in history)')) {
+    if (window.confirm('Clear all allocations and statuses from the UI? (Database history will be preserved)')) {
       try {
-        // Get all machine IDs for current shift allocations
-        const machineIds = [];
-        for (const machineName of Object.keys(shiftData[activeShift].assignments)) {
-          const { data: machineData } = await supabase
-            .from('machines')
-            .select('id')
-            .eq('machine_name', machineName)
-            .single();
-          
-          if (machineData) {
-            machineIds.push(machineData.id);
-          }
-        }
-
-        // Mark all allocations for current shift as inactive (keep in database)
-        if (machineIds.length > 0) {
-          await supabase
-            .from('allocations')
-            .update({ is_active: false })
-            .in('machine_id', machineIds)
-            .eq('shift', activeShift);
-        }
-
-        // Mark all machine statuses as inactive (keep in database)
-        await supabase
-          .from('machine_statuses')
-          .update({ is_active: false })
-          .neq('id', 0);
-
-        // Update UI to clear display
+        // Only clear UI - do NOT delete from database
+        // Database keeps all the history
+        
+        // Clear UI assignments for current shift
         setShiftData(prev => ({
           ...prev,
           [activeShift]: {
@@ -546,9 +446,10 @@ function App() {
           }
         }));
         
+        // Clear UI machine statuses
         setMachineStatuses({});
         
-        setSaveStatus('✅ Map cleared (data preserved in history)');
+        setSaveStatus('✅ UI cleared (database history preserved)');
         setTimeout(() => setSaveStatus(''), 2000);
       } catch (error) {
         console.error('Error clearing map:', error);
