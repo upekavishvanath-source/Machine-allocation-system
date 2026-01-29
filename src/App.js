@@ -93,7 +93,7 @@ function App() {
 
   const initializeFixedZones = async () => {
     try {
-      await supabase.from('zones').update().neq('id', 0);
+      await supabase.from('zones').delete().neq('id', 0);
       
       for (const zone of FIXED_ZONES) {
         const { data: zoneData, error: zoneError } = await supabase
@@ -280,10 +280,14 @@ function App() {
 
   const removeTeamMember = async (id) => {
     try {
-      await supabase.from('allocations').update().eq('worker_id', id);
-      const { error } = await supabase.from('workers').update().eq('id', id);
+      // Delete allocations from database
+      await supabase.from('allocations').delete().eq('worker_id', id);
+      
+      // Delete worker from database
+      const { error } = await supabase.from('workers').delete().eq('id', id);
       if (error) throw error;
 
+      // Update local state
       setShiftData(prev => ({
         ...prev,
         [activeShift]: {
@@ -340,22 +344,25 @@ function App() {
       if (!machineData) throw new Error('Machine not found');
 
       if (memberId === null) {
+        // Clear all assignments for this machine and shift from database
         await supabase
           .from('allocations')
-          .update()
+          .delete()
           .eq('machine_id', machineData.id)
           .eq('shift', activeShift);
       } else {
         const currentAssignments = shiftData[activeShift].assignments[machineName] || [];
         
         if (currentAssignments.includes(memberId)) {
+          // Remove assignment from database
           await supabase
             .from('allocations')
-            .update()
+            .delete()
             .eq('machine_id', machineData.id)
             .eq('worker_id', memberId)
             .eq('shift', activeShift);
         } else if (currentAssignments.length < 5) {
+          // Add assignment to database
           await supabase
             .from('allocations')
             .insert([{
@@ -390,17 +397,20 @@ function App() {
 
       if (existingStatus) {
         if (status === null) {
+          // Delete status from database
           await supabase
             .from('machine_statuses')
-            .update()
+            .delete()
             .eq('machine_name', machineName);
         } else {
+          // Update status in database
           await supabase
             .from('machine_statuses')
             .update({ status })
             .eq('machine_name', machineName);
         }
       } else if (status !== null) {
+        // Insert new status into database
         await supabase
           .from('machine_statuses')
           .insert([{ machine_name: machineName, status }]);
@@ -424,20 +434,55 @@ function App() {
     }
   };
 
-  const clearMap = () => {
-    if (window.confirm('Clear all allocations and statuses from the map? (Data will remain in history)')) {
-      setShiftData(prev => ({
-        ...prev,
-        [activeShift]: {
-          ...prev[activeShift],
-          assignments: {}
+  const clearMap = async () => {
+    if (window.confirm('Clear all allocations and statuses from the map? This will permanently delete the data.')) {
+      try {
+        // Get all machine IDs for current shift allocations
+        const machineIds = [];
+        for (const machineName of Object.keys(shiftData[activeShift].assignments)) {
+          const { data: machineData } = await supabase
+            .from('machines')
+            .select('id')
+            .eq('machine_name', machineName)
+            .single();
+          
+          if (machineData) {
+            machineIds.push(machineData.id);
+          }
         }
-      }));
-      
-      setMachineStatuses({});
-      
-      setSaveStatus('✅ Map cleared (history preserved)');
-      setTimeout(() => setSaveStatus(''), 2000);
+
+        // Delete all allocations for current shift from database
+        if (machineIds.length > 0) {
+          await supabase
+            .from('allocations')
+            .delete()
+            .in('machine_id', machineIds)
+            .eq('shift', activeShift);
+        }
+
+        // Delete all machine statuses from database
+        await supabase
+          .from('machine_statuses')
+          .delete()
+          .neq('id', 0); // Delete all statuses
+
+        // Update local state
+        setShiftData(prev => ({
+          ...prev,
+          [activeShift]: {
+            ...prev[activeShift],
+            assignments: {}
+          }
+        }));
+        
+        setMachineStatuses({});
+        
+        setSaveStatus('✅ Map cleared successfully');
+        setTimeout(() => setSaveStatus(''), 2000);
+      } catch (error) {
+        console.error('Error clearing map:', error);
+        setSaveStatus('❌ Error clearing map');
+      }
     }
   };
 
@@ -456,7 +501,7 @@ function App() {
   };
 
   const getShiftLabel = (shift) => {
-    const labels = { A: 'Shift A (6AM-2PM)', B: 'Shift B (2PM-10PM)', C: 'Shift C (10PM-6AM)' };
+    const labels = { A: 'Shift A', B: 'Shift B', C: 'Shift C' };
     return labels[shift];
   };
 
@@ -552,24 +597,35 @@ function App() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #eff6ff, #e0e7ff)', padding: '24px' }}>
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #eff6ff, #e0e7ff)', padding: '12px' }}>
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
+        * {
+          box-sizing: border-box;
+        }
+        @media (max-width: 768px) {
+          .grid-responsive {
+            grid-template-columns: 1fr !important;
+          }
+          .shift-buttons {
+            flex-wrap: wrap;
+          }
+        }
       `}</style>
-      <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '100%', margin: '0 auto' }}>
         <div style={{ background: 'white', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
           
-          <div style={{ background: 'linear-gradient(to right, #2563eb, #4f46e5)', color: 'white', padding: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ background: 'linear-gradient(to right, #2563eb, #4f46e5)', color: 'white', padding: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
               <div>
-                <h1 style={{ fontSize: '30px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px', margin: 0 }}>
+                <h1 style={{ fontSize: 'clamp(20px, 4vw, 30px)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px', margin: 0 }}>
                   <Monitor size={32} />
                   Machine Allocation Manager
                 </h1>
-                <p style={{ marginTop: '8px', color: '#dbeafe' }}>Supabase Connected | 43 Machines | 3 Shifts | 7 Fixed Zones</p>
+                <p style={{ marginTop: '8px', color: '#dbeafe', fontSize: 'clamp(11px, 2vw, 14px)' }}>Supabase Connected | 43 Machines | 3 Shifts | 7 Fixed Zones</p>
               </div>
               <button
                 onClick={loadAllData}
@@ -598,10 +654,10 @@ function App() {
             )}
           </div>
 
-          <div style={{ padding: '16px 24px', background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div style={{ padding: '12px 16px', background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
+            <div className="shift-buttons" style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
               <Clock size={20} style={{ color: '#6b7280' }} />
-              <span style={{ fontWeight: '600', color: '#374151', marginRight: '12px' }}>Select Shift:</span>
+              <span style={{ fontWeight: '600', color: '#374151', marginRight: '12px', fontSize: 'clamp(12px, 2vw, 16px)' }}>Select Shift:</span>
               {['A', 'B', 'C'].map(shift => (
                 <button
                   key={shift}
@@ -616,7 +672,8 @@ function App() {
                     color: activeShift === shift ? 'white' : (shift === 'A' ? '#92400e' : shift === 'B' ? '#1e40af' : '#4338ca'),
                     boxShadow: activeShift === shift ? '0 4px 6px rgba(0,0,0,0.1)' : 'none',
                     transform: activeShift === shift ? 'scale(1.05)' : 'scale(1)',
-                    transition: 'all 0.2s'
+                    transition: 'all 0.2s',
+                    fontSize: 'clamp(12px, 2vw, 16px)'
                   }}
                 >
                   {shift === 'A' ? '☀️' : shift === 'B' ? '🌤️' : '🌙'} Shift {shift}
@@ -625,7 +682,7 @@ function App() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', background: '#f9fafb', flexWrap: 'wrap' }}>
             {[
               { id: 'setup', label: 'Setup & Allocation', icon: Users },
               { id: 'view', label: 'Manager View', icon: Eye }
@@ -640,7 +697,8 @@ function App() {
                   color: activeTab === tab.id ? '#2563eb' : '#4b5563',
                   border: 'none',
                   borderBottom: activeTab === tab.id ? '2px solid #2563eb' : 'none',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  fontSize: 'clamp(12px, 2vw, 16px)'
                 }}
               >
                 <tab.icon size={16} style={{ display: 'inline', marginRight: '8px' }} />
@@ -649,9 +707,9 @@ function App() {
             ))}
           </div>
 
-          <div style={{ padding: '24px' }}>
+          <div style={{ padding: 'clamp(12px, 3vw, 24px)' }}>
             {activeTab === 'setup' ? (
-              <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '24px' }}>
+              <div className="grid-responsive" style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '24px' }}>
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   
@@ -738,8 +796,8 @@ function App() {
                 </div>
 
                 <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                    <h2 style={{ fontSize: '20px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                    <h2 style={{ fontSize: 'clamp(16px, 3vw, 20px)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
                       <Grid3x3 size={20} />
                       Machine Map
                     </h2>
@@ -770,7 +828,7 @@ function App() {
                   </div>
                   
                   <div style={{ background: 'white', borderRadius: '8px', padding: '16px', height: '550px', overflow: 'auto' }}>
-                    <svg width="900" height="1150">
+                    <svg width="900" height="1150" style={{ maxWidth: '100%', height: 'auto' }}>
                       {drawZoneConnections()}
                       
                       {machines.map(machine => {
@@ -849,7 +907,7 @@ function App() {
 
       {showMemberModal && selectedMachine && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-          <div style={{ background: 'white', borderRadius: '8px', padding: '24px', maxWidth: '28rem', width: '100%', margin: '0 16px' }}>
+          <div style={{ background: 'white', borderRadius: '8px', padding: '24px', maxWidth: '28rem', width: '90%', margin: '0 16px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>Assign to {selectedMachine.id}</h3>
               <button onClick={() => {
@@ -908,7 +966,7 @@ function App() {
 
       {showStatusMenu && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-          <div style={{ background: 'white', borderRadius: '8px', padding: '24px', maxWidth: '600px', width: '100%', margin: '0 16px', maxHeight: '80vh', overflowY: 'auto' }}>
+          <div style={{ background: 'white', borderRadius: '8px', padding: '24px', maxWidth: '600px', width: '90%', margin: '0 16px', maxHeight: '80vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>
                 Select Machines for {activeStatusFilter && (activeStatusFilter.charAt(0).toUpperCase() + activeStatusFilter.slice(1).replace('-', ' '))}
@@ -923,7 +981,7 @@ function App() {
             <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '16px' }}>
               Click on machines to toggle their status. Click again to remove status.
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '8px' }}>
               {machines.map(machine => {
                 const currentStatus = machineStatuses[machine.id];
                 const isSelected = currentStatus === activeStatusFilter;
@@ -993,7 +1051,7 @@ function ManagerView({
 }) {
   return (
     <div>
-      <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '24px' }}>Allocation Overview - All Shifts</h2>
+      <h2 style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 'bold', marginBottom: '24px' }}>Allocation Overview - All Shifts</h2>
       
       {['A', 'B', 'C'].map(shift => {
         const totalAssigned = Object.values(shiftData[shift].assignments).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
@@ -1001,11 +1059,11 @@ function ManagerView({
         
         return (
           <div key={shift} style={{ marginBottom: '32px', padding: '20px', background: getShiftColor(shift), borderRadius: '12px', border: '2px solid #d1d5db' }}>
-            <h3 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px', color: '#1f2937' }}>
+            <h3 style={{ fontSize: 'clamp(16px, 3vw, 20px)', fontWeight: 'bold', marginBottom: '16px', color: '#1f2937' }}>
               {shift === 'A' ? '☀️' : shift === 'B' ? '🌤️' : '🌙'} {getShiftLabel(shift)}
             </h3>
             
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '16px', marginBottom: '16px' }}>
               <div style={{ background: 'white', borderRadius: '8px', padding: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                 <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '4px' }}>EPF Count</p>
                 <p style={{ fontSize: '28px', fontWeight: 'bold', color: '#1e40af' }}>{shiftData[shift].teamMembers.length}</p>
@@ -1037,7 +1095,7 @@ function ManagerView({
             {machinesWithAssignments > 0 && (
               <div style={{ background: 'white', borderRadius: '8px', padding: '16px', maxHeight: '250px', overflowY: 'auto' }}>
                 <p style={{ fontWeight: '600', marginBottom: '8px', color: '#374151' }}>Assignments:</p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
                   {Object.entries(shiftData[shift].assignments).map(([machineId, memberIds]) => {
                     if (!Array.isArray(memberIds) || memberIds.length === 0) return null;
                     return (
@@ -1063,8 +1121,8 @@ function ManagerView({
       
       {zones.length > 0 && (
         <div style={{ marginBottom: '24px' }}>
-          <h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '12px' }}>Fixed Zones</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+          <h3 style={{ fontSize: 'clamp(16px, 3vw, 20px)', fontWeight: '600', marginBottom: '12px' }}>Fixed Zones</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px' }}>
             {zones.map(zone => (
               <div key={zone.id} style={{ background: 'white', border: `3px solid ${zone.color}`, borderRadius: '8px', padding: '16px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
                 <h4 style={{ fontWeight: 'bold', fontSize: '16px', marginBottom: '8px' }}>{zone.name}</h4>
@@ -1078,10 +1136,10 @@ function ManagerView({
         </div>
       )}
 
-      <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '24px' }}>
-        <h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '16px' }}>Complete Allocation Map</h3>
+      <div style={{ background: '#f9fafb', borderRadius: '8px', padding: 'clamp(12px, 3vw, 24px)' }}>
+        <h3 style={{ fontSize: 'clamp(16px, 3vw, 20px)', fontWeight: '600', marginBottom: '16px' }}>Complete Allocation Map</h3>
         <div style={{ background: 'white', borderRadius: '8px', padding: '16px', height: '550px', overflow: 'auto' }}>
-          <svg width="900" height="1150">
+          <svg width="900" height="1150" style={{ maxWidth: '100%', height: 'auto' }}>
             {drawZoneConnections()}
             
             {machines.map(machine => {
