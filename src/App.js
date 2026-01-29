@@ -342,7 +342,7 @@ function App() {
         // Clear all assignments - save to database permanently
         await supabase
           .from('allocations')
-          .delete()
+          .update()
           .eq('machine_id', machineData.id)
           .eq('shift', activeShift);
       } else {
@@ -352,7 +352,7 @@ function App() {
           // Remove assignment - save to database permanently
           await supabase
             .from('allocations')
-            .delete()
+            .update()
             .eq('machine_id', machineData.id)
             .eq('worker_id', memberId)
             .eq('shift', activeShift);
@@ -396,7 +396,7 @@ function App() {
           // Delete from database permanently
           await supabase
             .from('machine_statuses')
-            .delete()
+            .update()
             .eq('machine_name', machineName);
         } else {
           // Update status in database permanently
