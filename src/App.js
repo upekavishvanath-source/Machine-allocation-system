@@ -396,7 +396,7 @@ function App() {
           // Delete from database permanently
           await supabase
             .from('machine_statuses')
-            .update()
+            .delete()
             .eq('machine_name', machineName);
         } else {
           // Update status in database permanently
