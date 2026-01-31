@@ -1,625 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Users, Monitor, Grid3x3, Eye, Trash2, Plus, X, Clock, RefreshCw, 
-  Wrench, Code, Edit, XCircle, Sun, Moon, Save, UserCheck, 
-  AlertCircle, Settings, Move, Download, Play
-} from 'lucide-react';
-import { supabase } from './supabaseClient';
-
 // ============================================
-// COMPLETE UPDATED APP - WITH RUNNING STATUS & FINAL OVERVIEW CSV
+// PART 2: View Components
+// Import as AppPart2.jsx  
+// Export: SetupView, ManagerView, MapEditorView
 // ============================================
 
-function App() {
-  const [activeShift, setActiveShift] = useState('A');
-  const [shiftData, setShiftData] = useState({
-    A: { teamMembers: [], assignments: {}, dayNight: 'day', totalAttendance: 0, otherWorkersCount: 0, webTransportCount: 0, reWorkCount: 0, warpBeamCount: 0, machineAssignCount: 0 },
-    B: { teamMembers: [], assignments: {}, dayNight: 'day', totalAttendance: 0, otherWorkersCount: 0, webTransportCount: 0, reWorkCount: 0, warpBeamCount: 0, machineAssignCount: 0 },
-    C: { teamMembers: [], assignments: {}, dayNight: 'night', totalAttendance: 0, otherWorkersCount: 0, webTransportCount: 0, reWorkCount: 0, warpBeamCount: 0, machineAssignCount: 0 }
-  });
-  const [machines, setMachines] = useState([]);
-  const [zones, setZones] = useState([]);
-  const [newMemberEPF, setNewMemberEPF] = useState('');
-  const [selectedMachine, setSelectedMachine] = useState(null);
-  const [showMemberModal, setShowMemberModal] = useState(false);
-  const [activeTab, setActiveTab] = useState('setup');
-  const [loading, setLoading] = useState(true);
-  const [saveStatus, setSaveStatus] = useState('');
-  const [machineStatuses, setMachineStatuses] = useState({});
-  const [showStatusMenu, setShowStatusMenu] = useState(false);
-  const [activeStatusFilter, setActiveStatusFilter] = useState(null);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [newMachineName, setNewMachineName] = useState('');
-  const [newZoneName, setNewZoneName] = useState('');
-  const [newZoneColor, setNewZoneColor] = useState('#fef3c7');
-
-  const DEFAULT_ZONES = [
-    { id: 1, name: 'Zone A', machines: ['MJ-06', 'MJ-14', 'MJ-09', 'MJ-16'], color: '#fef3c7' },
-    { id: 2, name: 'Zone B', machines: ['MS-03', 'JL-07', 'JL-08', 'TL-01'], color: '#dbeafe' },
-    { id: 3, name: 'Zone C', machines: ['MJ-15', 'MJ-05', 'MJ-04'], color: '#e0e7ff' },
-    { id: 4, name: 'Zone D', machines: ['MJ-02', 'MJ-07', 'MJ-13', 'MJ-03'], color: '#fce7f3' },
-    { id: 5, name: 'Zone E', machines: ['MJ-08', 'MJ-01', 'JT-16'], color: '#d1fae5' },
-    { id: 6, name: 'Zone F', machines: ['TX-10', 'JL-04', 'JL-02', 'JL-05'], color: '#fee2e2' },
-    { id: 7, name: 'Zone G', machines: ['JL-06', 'JC-03', 'JC-01', 'JC-02'], color: '#fef08a' }
-  ];
-
-  const STATUS_COLORS = {
-    'no-order': '#92400e',
-    'development': '#eab308',
-    'setup': '#3b82f6',
-    'alteration': '#ef4444',
-    'running': '#10b981'  // FIXED: Changed from 'runing' to 'running' with proper color
-  };
-
-  useEffect(() => {
-    loadAllData();
-  }, []);
-
-  const getDefaultMachineLayout = () => {
-    return [
-      { id: 'JQ-1', x: 80, y: 60 }, { id: 'MS-02', x: 80, y: 160 }, { id: 'JL-10', x: 80, y: 260 }, { id: 'JL-09', x: 80, y: 360 },
-      { id: 'JT-13', x: 80, y: 460 }, { id: 'JB-01', x: 80, y: 560 }, { id: 'JB-03', x: 80, y: 660 }, { id: 'JB-02', x: 80, y: 760 },
-      { id: 'MJ-16', x: 80, y: 860 }, { id: 'MJ-10', x: 80, y: 960 }, { id: 'MJ-06', x: 80, y: 1060 }, { id: 'MJ-11', x: 200, y: 60 },
-      { id: 'MS-01', x: 200, y: 160 }, { id: 'MS-03', x: 200, y: 260 }, { id: 'JL-07', x: 200, y: 360 }, { id: 'JL-08', x: 200, y: 460 },
-      { id: 'TL-01', x: 200, y: 560 }, { id: 'JL-01', x: 200, y: 660 }, { id: 'JL-03', x: 200, y: 760 }, { id: 'ML-08', x: 200, y: 860 },
-      { id: 'MJ-09', x: 200, y: 960 }, { id: 'MJ-14', x: 200, y: 1060 }, { id: 'MJ-12', x: 320, y: 60 }, { id: 'TX-02', x: 440, y: 60 },
-      { id: 'MJ-15', x: 560, y: 60 }, { id: 'MJ-05', x: 500, y: 160 }, { id: 'MJ-04', x: 600, y: 160 }, { id: 'MJ-13', x: 500, y: 240 },
-      { id: 'MJ-03', x: 700, y: 240 }, { id: 'MJ-07', x: 500, y: 330 }, { id: 'MJ-02', x: 600, y: 310 }, { id: 'MJ-08', x: 500, y: 420 },
-      { id: 'MJ-01', x: 600, y: 400 }, { id: 'JT-14', x: 700, y: 340 }, { id: 'JT-16', x: 700, y: 440 }, { id: 'JC-02', x: 700, y: 960 },
-      { id: 'JC-01', x: 700, y: 880 }, { id: 'JC-03', x: 700, y: 800 }, { id: 'JL-06', x: 700, y: 720 }, { id: 'JL-05', x: 700, y: 640 },
-      { id: 'TX-10', x: 700, y: 560 }, { id: 'JL-04', x: 550, y: 640 }, { id: 'JL-02', x: 550, y: 560 }
-    ];
-  };
-
-  const loadAllData = async () => {
-    setLoading(true);
-    try {
-      await loadMachinePositions();
-      await loadZoneDefinitions();
-      await loadShiftSettings();
-      await loadAttendance();
-      await loadWorkerCounts();
-      await loadWorkers();
-      await loadAllocations();
-      await loadMachineStatuses();
-      setSaveStatus('✅ Data loaded successfully');
-      setTimeout(() => setSaveStatus(''), 3000);
-      setHasUnsavedChanges(false);
-    } catch (error) {
-      console.error('Error loading data:', error);
-      setSaveStatus('❌ Error loading data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadMachinePositions = async () => {
-    const { data, error } = await supabase.from('machine_positions').select('*');
-    if (error || !data || data.length === 0) {
-      setMachines(getDefaultMachineLayout());
-    } else {
-      setMachines(data.map(m => ({ id: m.machine_name, x: m.x_position, y: m.y_position })));
-    }
-  };
-
-  const loadZoneDefinitions = async () => {
-    const { data, error } = await supabase.from('zone_definitions').select('*');
-    if (error || !data || data.length === 0) {
-      setZones(DEFAULT_ZONES);
-    } else {
-      setZones(data.map(z => ({ id: z.id, name: z.zone_name, machines: z.machines || [], color: z.color || '#f3f4f6' })));
-    }
-  };
-
-  const loadShiftSettings = async () => {
-    const { data } = await supabase.from('shift_settings').select('*');
-    if (data) {
-      setShiftData(prev => {
-        const newData = { ...prev };
-        data.forEach(s => { if (newData[s.shift_name]) newData[s.shift_name].dayNight = s.day_night || 'day'; });
-        return newData;
-      });
-    }
-  };
-
-  const loadAttendance = async () => {
-    const { data } = await supabase.from('attendance').select('*');
-    if (data) {
-      setShiftData(prev => {
-        const newData = { ...prev };
-        data.forEach(a => { if (newData[a.shift]) newData[a.shift].totalAttendance = a.total_count || 0; });
-        return newData;
-      });
-    }
-  };
-
-  const loadWorkerCounts = async () => {
-    const { data } = await supabase.from('worker_counts').select('*');
-    if (data) {
-      setShiftData(prev => {
-        const newData = { ...prev };
-        data.forEach(w => {
-          if (newData[w.shift]) {
-            newData[w.shift].otherWorkersCount = w.other_workers || 0;
-            newData[w.shift].webTransportCount = w.web_transport || 0;
-            newData[w.shift].reWorkCount = w.re_work || 0;
-            newData[w.shift].warpBeamCount = w.warp_beam || 0;
-            newData[w.shift].machineAssignCount = w.machine_assign || 0;
-          }
-        });
-        return newData;
-      });
-    }
-  };
-
-  const loadWorkers = async () => {
-    const { data } = await supabase.from('workers').select('*');
-    if (data) {
-      setShiftData(prev => {
-        const newData = { ...prev };
-        ['A', 'B', 'C'].forEach(s => { newData[s].teamMembers = []; });
-        data.forEach(w => {
-          const s = w.shift || 'A';
-          if (newData[s]) newData[s].teamMembers.push({ id: w.id, epf: w.worker_name });
-        });
-        return newData;
-      });
-    }
-  };
-
-  const loadAllocations = async () => {
-    const { data } = await supabase.from('allocations').select('*');
-    if (data) {
-      const newShiftData = { A: { assignments: {} }, B: { assignments: {} }, C: { assignments: {} } };
-      for (const a of data) {
-        const { data: m } = await supabase.from('machines').select('machine_name').eq('id', a.machine_id).single();
-        if (m) {
-          const s = a.shift || 'A';
-          if (!newShiftData[s].assignments[m.machine_name]) newShiftData[s].assignments[m.machine_name] = [];
-          newShiftData[s].assignments[m.machine_name].push(a.worker_id);
-        }
-      }
-      setShiftData(prev => ({
-        A: { ...prev.A, assignments: newShiftData.A.assignments },
-        B: { ...prev.B, assignments: newShiftData.B.assignments },
-        C: { ...prev.C, assignments: newShiftData.C.assignments }
-      }));
-    }
-  };
-
-  const loadMachineStatuses = async () => {
-    const { data } = await supabase.from('machine_statuses').select('*');
-    if (data) {
-      const s = {};
-      data.forEach(st => { s[st.machine_name] = st.status; });
-      setMachineStatuses(s);
-    }
-  };
-
-  const toggleDayNight = (shift) => {
-    setShiftData(prev => ({ ...prev, [shift]: { ...prev[shift], dayNight: prev[shift].dayNight === 'day' ? 'night' : 'day' } }));
-    setHasUnsavedChanges(true);
-    setSaveStatus('⚠️ Unsaved changes');
-  };
-
-  const updateTotalAttendance = (shift, value) => {
-    setShiftData(prev => ({ ...prev, [shift]: { ...prev[shift], totalAttendance: parseInt(value) || 0 } }));
-    setHasUnsavedChanges(true);
-    setSaveStatus('⚠️ Unsaved changes');
-  };
-
-  const updateWorkerCount = (shift, field, value) => {
-    setShiftData(prev => ({ ...prev, [shift]: { ...prev[shift], [field]: parseInt(value) || 0 } }));
-    setHasUnsavedChanges(true);
-    setSaveStatus('⚠️ Unsaved changes');
-  };
-
-  const getCurrentShiftData = () => shiftData[activeShift];
-
-  const addTeamMember = () => {
-    if (newMemberEPF.trim()) {
-      const newId = Date.now();
-      setShiftData(prev => ({ ...prev, [activeShift]: { ...prev[activeShift], teamMembers: [...prev[activeShift].teamMembers, { id: newId, epf: newMemberEPF.trim(), isNew: true }] } }));
-      setNewMemberEPF('');
-      setHasUnsavedChanges(true);
-      setSaveStatus('⚠️ Unsaved changes - Click SAVE');
-    }
-  };
-
-  const removeTeamMember = (id) => {
-    setShiftData(prev => ({ ...prev, [activeShift]: { ...prev[activeShift], teamMembers: prev[activeShift].teamMembers.filter(m => m.id !== id) } }));
-    const newAssignments = { ...shiftData[activeShift].assignments };
-    Object.keys(newAssignments).forEach(m => {
-      if (Array.isArray(newAssignments[m])) {
-        newAssignments[m] = newAssignments[m].filter(mid => mid !== id);
-        if (newAssignments[m].length === 0) delete newAssignments[m];
-      }
-    });
-    setShiftData(prev => ({ ...prev, [activeShift]: { ...prev[activeShift], assignments: newAssignments } }));
-    setHasUnsavedChanges(true);
-  };
-
-  const assignMemberToMachine = (machineName, memberId) => {
-    if (memberId === null) {
-      setShiftData(prev => {
-        const na = { ...prev[activeShift].assignments };
-        delete na[machineName];
-        return { ...prev, [activeShift]: { ...prev[activeShift], assignments: na } };
-      });
-    } else {
-      const ca = shiftData[activeShift].assignments[machineName] || [];
-      if (ca.includes(memberId)) {
-        setShiftData(prev => {
-          const na = { ...prev[activeShift].assignments };
-          na[machineName] = na[machineName].filter(i => i !== memberId);
-          if (na[machineName].length === 0) delete na[machineName];
-          return { ...prev, [activeShift]: { ...prev[activeShift], assignments: na } };
-        });
-      } else if (ca.length < 5) {
-        setShiftData(prev => {
-          const na = { ...prev[activeShift].assignments };
-          if (!na[machineName]) na[machineName] = [];
-          na[machineName] = [...na[machineName], memberId];
-          return { ...prev, [activeShift]: { ...prev[activeShift], assignments: na } };
-        });
-      } else {
-        setSaveStatus('⚠️ Max 5 members per machine');
-        setTimeout(() => setSaveStatus(hasUnsavedChanges ? '⚠️ Unsaved changes' : ''), 2000);
-        return;
-      }
-    }
-    setHasUnsavedChanges(true);
-    setSaveStatus('⚠️ Unsaved changes');
-  };
-
-  const setMachineStatus = (machineName, status) => {
-    setMachineStatuses(prev => {
-      const ns = { ...prev };
-      if (status === null) delete ns[machineName];
-      else ns[machineName] = status;
-      return ns;
-    });
-    setHasUnsavedChanges(true);
-    setSaveStatus('⚠️ Unsaved changes');
-  };
-
-  const saveAllChanges = async () => {
-    if (!hasUnsavedChanges) {
-      setSaveStatus('ℹ️ No changes');
-      setTimeout(() => setSaveStatus(''), 2000);
-      return;
-    }
-    setLoading(true);
-    setSaveStatus('💾 Saving...');
-    try {
-      for (const shift of ['A', 'B', 'C']) {
-        const { data: es } = await supabase.from('shift_settings').select('id').eq('shift_name', shift).single();
-        if (es) await supabase.from('shift_settings').update({ day_night: shiftData[shift].dayNight }).eq('shift_name', shift);
-        else await supabase.from('shift_settings').insert([{ shift_name: shift, day_night: shiftData[shift].dayNight }]);
-
-        const { data: ea } = await supabase.from('attendance').select('id').eq('shift', shift).single();
-        if (ea) await supabase.from('attendance').update({ total_count: shiftData[shift].totalAttendance }).eq('shift', shift);
-        else await supabase.from('attendance').insert([{ shift, total_count: shiftData[shift].totalAttendance }]);
-
-        const { data: ec } = await supabase.from('worker_counts').select('id').eq('shift', shift).single();
-        const cd = { 
-          shift, 
-          other_workers: shiftData[shift].otherWorkersCount, 
-          web_transport: shiftData[shift].webTransportCount, 
-          re_work: shiftData[shift].reWorkCount, 
-          warp_beam: shiftData[shift].warpBeamCount,
-          machine_assign: shiftData[shift].machineAssignCount 
-        };
-        if (ec) await supabase.from('worker_counts').update(cd).eq('shift', shift);
-        else await supabase.from('worker_counts').insert([cd]);
-
-        for (const m of shiftData[shift].teamMembers) {
-          if (m.isNew) await supabase.from('workers').insert([{ worker_name: m.epf, shift }]);
-        }
-
-        await supabase.from('allocations').delete().eq('shift', shift);
-        for (const [mn, mids] of Object.entries(shiftData[shift].assignments)) {
-          let { data: md } = await supabase.from('machines').select('id').eq('machine_name', mn).single();
-          if (!md) {
-            const { data: nm } = await supabase.from('machines').insert([{ machine_name: mn }]).select().single();
-            md = nm;
-          }
-          for (const mid of mids) {
-            const mem = shiftData[shift].teamMembers.find(m => m.id === mid);
-            if (mem) {
-              const { data: wd } = await supabase.from('workers').select('id').eq('worker_name', mem.epf).eq('shift', shift).single();
-              if (wd && md) await supabase.from('allocations').insert([{ machine_id: md.id, worker_id: wd.id, shift }]);
-            }
-          }
-        }
-      }
-
-      await supabase.from('machine_statuses').delete().neq('id', 0);
-      for (const [mn, st] of Object.entries(machineStatuses)) {
-        await supabase.from('machine_statuses').insert([{ machine_name: mn, status: st }]);
-      }
-
-      if (editMode) {
-        await supabase.from('machine_positions').delete().neq('id', 0);
-        for (const m of machines) {
-          await supabase.from('machine_positions').insert([{ machine_name: m.id, x_position: m.x, y_position: m.y }]);
-        }
-        await supabase.from('zone_definitions').delete().neq('id', 0);
-        for (const z of zones) {
-          await supabase.from('zone_definitions').insert([{ id: z.id, zone_name: z.name, color: z.color, machines: z.machines }]);
-        }
-      }
-
-      setSaveStatus('✅ Saved!');
-      setHasUnsavedChanges(false);
-      await loadAllData();
-      setTimeout(() => setSaveStatus(''), 3000);
-    } catch (error) {
-      console.error('Save error:', error);
-      setSaveStatus('❌ Error saving');
-      setLoading(false);
-    }
-  };
-
-  const clearMap = () => {
-    if (window.confirm('Clear all allocations?')) {
-      setShiftData(prev => ({ ...prev, [activeShift]: { ...prev[activeShift], assignments: {} } }));
-      setMachineStatuses({});
-      setHasUnsavedChanges(true);
-      setSaveStatus('⚠️ Cleared - Click SAVE');
-    }
-  };
-
-  const handleMachineDrag = (machine, x, y) => {
-    setMachines(prev => prev.map(m => m.id === machine.id ? { ...m, x, y } : m));
-    setHasUnsavedChanges(true);
-  };
-
-  const addNewMachine = () => {
-    if (newMachineName.trim()) {
-      setMachines(prev => [...prev, { id: newMachineName.trim(), x: 400, y: 400 }]);
-      setNewMachineName('');
-      setHasUnsavedChanges(true);
-    }
-  };
-
-  const deleteMachine = (machineId) => {
-    if (window.confirm(`Delete ${machineId}?`)) {
-      setMachines(prev => prev.filter(m => m.id !== machineId));
-      setHasUnsavedChanges(true);
-    }
-  };
-
-  const addNewZone = () => {
-    if (newZoneName.trim()) {
-      const newId = Math.max(...zones.map(z => z.id), 0) + 1;
-      setZones(prev => [...prev, { id: newId, name: newZoneName.trim(), machines: [], color: newZoneColor }]);
-      setNewZoneName('');
-      setHasUnsavedChanges(true);
-    }
-  };
-
-  const deleteZone = (zoneId) => {
-    if (window.confirm('Delete zone?')) {
-      setZones(prev => prev.filter(z => z.id !== zoneId));
-      setHasUnsavedChanges(true);
-    }
-  };
-
-  const assignMachineToZone = (machineId, zoneId) => {
-    setZones(prev => prev.map(zone => {
-      const um = zone.machines.filter(m => m !== machineId);
-      if (zone.id === zoneId && !um.includes(machineId)) um.push(machineId);
-      return { ...zone, machines: um };
-    }));
-    setHasUnsavedChanges(true);
-  };
-
-  const removeMachineFromZone = (machineId, zoneId) => {
-    setZones(prev => prev.map(zone => {
-      if (zone.id === zoneId) {
-        return { ...zone, machines: zone.machines.filter(m => m !== machineId) };
-      }
-      return zone;
-    }));
-    setHasUnsavedChanges(true);
-  };
-
-  // NEW: Final Overview CSV Download Function
-  const downloadFinalOverviewCSV = () => {
-    const today = new Date();
-    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    
-    let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "Date,Shift,Other Workers Count,Web Transport Count,Re-Work Count,Warp Beam Count,Machine Assign Count,No. of Setup Count,No. of Alteration Count,Total Running Machine Count\n";
-    
-    ['A', 'B', 'C'].forEach(shift => {
-      const d = shiftData[shift];
-      
-      // Count machines by status for each shift
-      const setupCount = Object.values(machineStatuses).filter(s => s === 'setup').length;
-      const alterationCount = Object.values(machineStatuses).filter(s => s === 'alteration').length;
-      const runningCount = Object.values(machineStatuses).filter(s => s === 'running').length;
-      
-      csvContent += `${dateStr},`;
-      csvContent += `${shift},`;
-      csvContent += `${d.otherWorkersCount},`;
-      csvContent += `${d.webTransportCount},`;
-      csvContent += `${d.reWorkCount},`;
-      csvContent += `${d.warpBeamCount},`;
-      csvContent += `${d.machineAssignCount},`;
-      csvContent += `${setupCount},`;
-      csvContent += `${alterationCount},`;
-      csvContent += `${runningCount}\n`;
-    });
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Final_Overview_${dateStr}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    setSaveStatus('✅ Final Overview CSV downloaded!');
-    setTimeout(() => setSaveStatus(''), 3000);
-  };
-
-  const getMemberEPF = (memberId) => {
-    const m = getCurrentShiftData().teamMembers.find(m => m.id === memberId);
-    return m ? m.epf : '';
-  };
-
-  const getZoneForMachine = (machineId) => zones.find(z => z.machines.includes(machineId));
-  const getShiftColor = (shift) => ({ A: '#fef3c7', B: '#dbeafe', C: '#e0e7ff' }[shift] || '#f3f4f6');
-  const getShiftLabel = (shift) => ({ A: 'Shift A', B: 'Shift B', C: 'Shift C' }[shift]);
-  
-  const getRemainingWorkers = (shift) => {
-    const d = shiftData[shift];
-    return d.totalAttendance - d.otherWorkersCount - d.webTransportCount - d.reWorkCount - d.warpBeamCount - (d.machineAssignCount || 0);
-  };
-
-  const drawZoneConnections = () => {
-    const c = [];
-    zones.forEach(zone => {
-      for (let i = 0; i < zone.machines.length - 1; i++) {
-        const m1 = machines.find(m => m.id === zone.machines[i]);
-        const m2 = machines.find(m => m.id === zone.machines[i + 1]);
-        if (m1 && m2) {
-          c.push(
-            <line 
-              key={`z-${zone.id}-${i}`} 
-              x1={m1.x} y1={m1.y} 
-              x2={m2.x} y2={m2.y} 
-              stroke="#3b82f6" 
-              strokeWidth="3" 
-              opacity="0.4" 
-            />
-          );
-        }
-      }
-    });
-    return c;
-  };
-
-  if (loading) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(to bottom right, #eff6ff, #e0e7ff)' }}>
-        <div style={{ textAlign: 'center' }}>
-          <RefreshCw size={48} style={{ animation: 'spin 1s linear infinite', color: '#2563eb' }} />
-          <p style={{ marginTop: '16px', fontSize: '18px', color: '#4b5563' }}>Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  const props = {
-    activeShift, shiftData, machines, setMachines, zones, setZones, machineStatuses,
-    newMemberEPF, setNewMemberEPF, selectedMachine, setSelectedMachine,
-    showMemberModal, setShowMemberModal, showStatusMenu, setShowStatusMenu,
-    activeStatusFilter, setActiveStatusFilter, toggleDayNight, updateTotalAttendance,
-    updateWorkerCount, addTeamMember, removeTeamMember, assignMemberToMachine,
-    setMachineStatus, clearMap, getMemberEPF, getZoneForMachine, getShiftColor,
-    getShiftLabel, getRemainingWorkers, drawZoneConnections, STATUS_COLORS,
-    getCurrentShiftData, setSaveStatus, hasUnsavedChanges, setHasUnsavedChanges,
-    editMode, setEditMode, newMachineName, setNewMachineName, newZoneName,
-    setNewZoneName, newZoneColor, setNewZoneColor, handleMachineDrag,
-    addNewMachine, deleteMachine, addNewZone, deleteZone, assignMachineToZone,
-    removeMachineFromZone, downloadFinalOverviewCSV
-  };
-
-  return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, #eff6ff, #e0e7ff)', padding: '12px' }}>
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        * { box-sizing: border-box; }
-        @media (max-width: 768px) {
-          .grid-responsive { grid-template-columns: 1fr !important; }
-          .shift-buttons { flex-wrap: wrap; }
-        }
-      `}</style>
-      <div style={{ maxWidth: '100%', margin: '0 auto' }}>
-        <div style={{ background: 'white', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
-          
-          <div style={{ background: 'linear-gradient(to right, #10b981, #4f46e5)', color: 'white', padding: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-              <div>
-                <h1 style={{ fontSize: 'clamp(20px, 4vw, 30px)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px', margin: 0 }}>
-                  <Monitor size={32} /> Machine Allocation Manager
-                </h1>
-                <p style={{ marginTop: '8px', color: '#dbeafe', fontSize: 'clamp(11px, 2vw, 14px)' }}>
-                  Complete Workforce & Machine Management System
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                <button onClick={downloadFinalOverviewCSV} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f59e0b', color: 'white', padding: '10px 20px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
-                  <Download size={16} /> Export CSV
-                </button>
-                <button onClick={loadAllData} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.2)', color: 'white', padding: '10px 20px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
-                  <RefreshCw size={16} /> Refresh
-                </button>
-                <button onClick={saveAllChanges} disabled={!hasUnsavedChanges} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: hasUnsavedChanges ? '#10b981' : 'rgba(255,255,255,0.2)', color: 'white', padding: '10px 20px', borderRadius: '8px', border: hasUnsavedChanges ? '2px solid #ffffff' : '1px solid rgba(255,255,255,0.3)', cursor: hasUnsavedChanges ? 'pointer' : 'not-allowed', fontSize: '14px', fontWeight: '700', boxShadow: hasUnsavedChanges ? '0 4px 6px rgba(0,0,0,0.2)' : 'none', opacity: hasUnsavedChanges ? 1 : 0.6 }}>
-                  <Save size={16} /> SAVE ALL
-                </button>
-              </div>
-            </div>
-            {saveStatus && (
-              <div style={{ marginTop: '12px', padding: '8px 16px', background: 'rgba(255,255,255,0.2)', borderRadius: '6px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {hasUnsavedChanges && <AlertCircle size={16} />}
-                {saveStatus}
-              </div>
-            )}
-          </div>
-
-          <div style={{ padding: '12px 16px', background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
-            <div className="shift-buttons" style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <Clock size={20} style={{ color: '#6b7280' }} />
-              <span style={{ fontWeight: '600', color: '#374151', marginRight: '12px', fontSize: 'clamp(12px, 2vw, 16px)' }}>Select Shift:</span>
-              {['A', 'B', 'C'].map(shift => (
-                <button key={shift} onClick={() => setActiveShift(shift)} style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', fontWeight: '600', cursor: 'pointer', background: activeShift === shift ? (shift === 'A' ? '#fbbf24' : shift === 'B' ? '#3b82f6' : '#6366f1') : (shift === 'A' ? '#fef3c7' : shift === 'B' ? '#dbeafe' : '#e0e7ff'), color: activeShift === shift ? 'white' : (shift === 'A' ? '#92400e' : shift === 'B' ? '#1e40af' : '#4338ca'), boxShadow: activeShift === shift ? '0 4px 6px rgba(0,0,0,0.1)' : 'none', transform: activeShift === shift ? 'scale(1.05)' : 'scale(1)', transition: 'all 0.2s', fontSize: 'clamp(12px, 2vw, 16px)' }}>
-                  {shift === 'A' ? '☀️' : shift === 'B' ? '🌤️' : '🌙'} Shift {shift}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', background: '#f9fafb', flexWrap: 'wrap' }}>
-            {[
-              { id: 'setup', label: 'Setup & Allocation', icon: Users },
-              { id: 'view', label: 'Manager View', icon: Eye },
-              { id: 'mapeditor', label: 'Map Editor', icon: Settings }
-            ].map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '12px 24px', fontWeight: '500', background: activeTab === tab.id ? 'white' : 'transparent', color: activeTab === tab.id ? '#2563eb' : '#4b5563', border: 'none', borderBottom: activeTab === tab.id ? '2px solid #2563eb' : 'none', cursor: 'pointer', fontSize: 'clamp(12px, 2vw, 16px)' }}>
-                <tab.icon size={16} style={{ display: 'inline', marginRight: '8px' }} />
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ padding: 'clamp(12px, 3vw, 24px)' }}>
-            {activeTab === 'setup' && <SetupView {...props} />}
-            {activeTab === 'view' && <ManagerView {...props} />}
-            {activeTab === 'mapeditor' && <MapEditorView {...props} />}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// PART 2: VIEW COMPONENTS
-// ============================================
+import React from 'react';
+import { Users, Trash2, Plus, X, Sun, Moon, UserCheck, Wrench, Code, Edit, XCircle, Grid3x3, Move } from 'lucide-react';
 
 // SETUP VIEW COMPONENT
-function SetupView(props) {
+export function SetupView(props) {
   const { shiftData, activeShift, machines, zones, machineStatuses, newMemberEPF, setNewMemberEPF,
     selectedMachine, setSelectedMachine, showMemberModal, setShowMemberModal, showStatusMenu,
     setShowStatusMenu, activeStatusFilter, setActiveStatusFilter, toggleDayNight, updateTotalAttendance,
     updateWorkerCount, addTeamMember, removeTeamMember, assignMemberToMachine, setMachineStatus,
-    clearMap, getMemberEPF, getZoneForMachine, getShiftColor, getRemainingWorkers,
-    drawZoneConnections, STATUS_COLORS, getCurrentShiftData } = props;
+    clearMap, getMemberEPF, getZoneForMachine, getShiftColor, getShiftLabel, getRemainingWorkers,
+    drawZoneConnections, STATUS_COLORS, getCurrentShiftData, setSaveStatus, hasUnsavedChanges } = props;
 
   const currentData = getCurrentShiftData();
 
@@ -636,8 +31,8 @@ function SetupView(props) {
           <input type="number" min="0" value={shiftData[activeShift].totalAttendance} onChange={(e) => updateTotalAttendance(activeShift, e.target.value)} placeholder="Enter total" style={{ width: '100%', padding: '8px', border: '2px solid #0ea5e9', borderRadius: '6px', fontSize: '15px', fontWeight: 'bold', textAlign: 'center' }} />
           <div style={{ marginTop: '8px', padding: '6px', background: 'white', borderRadius: '4px', fontSize: '11px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-              <span>Machine Assign:</span>
-              <span style={{ fontWeight: 'bold', color: '#10b981' }}>{currentData.machineAssignCount || 0}</span>
+              <span>Assigned:</span>
+              <span style={{ fontWeight: 'bold', color: '#059669' }}>{currentData.teamMembers.length}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
               <span>Other Workers:</span>
@@ -664,12 +59,6 @@ function SetupView(props) {
           </div>
         </div>
 
-        {/* Machine Assign Section */}
-        <div style={{ background: '#dcfce7', borderRadius: '8px', padding: '12px', border: '2px solid #10b981' }}>
-          <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#064e3b' }}>Machine Assign</h3>
-          <input type="number" min="0" value={currentData.machineAssignCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'machineAssignCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #10b981', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
-        </div>
-
         {/* Worker Count Sections */}
         <div style={{ background: '#fef3c7', borderRadius: '8px', padding: '12px', border: '2px solid #fbbf24' }}>
           <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#92400e' }}>Other Workers</h3>
@@ -691,7 +80,7 @@ function SetupView(props) {
           <input type="number" min="0" value={currentData.warpBeamCount} onChange={(e) => updateWorkerCount(activeShift, 'warpBeamCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #06b6d4', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
         </div>
 
-        {/* Machine Status - WITH RUNNING BUTTON ADDED */}
+        {/* Machine Status */}
         <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '12px', border: '2px solid #e5e7eb' }}>
           <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '8px', color: '#374151' }}>Machine Status</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -699,7 +88,7 @@ function SetupView(props) {
               { id: 'setup', label: 'Setup', icon: Wrench, color: '#3b82f6' },
               { id: 'development', label: 'Development', icon: Code, color: '#eab308' },
               { id: 'alteration', label: 'Alteration', icon: Edit, color: '#ef4444' },
-              { id: 'running', label: 'Running', icon: Play, color: '#10b981' },  // ADDED RUNNING BUTTON
+              { id: 'Runing', label: 'Runing', icon: Edit, color: '#76e61c' },
               { id: 'no-order', label: 'No Order', icon: XCircle, color: '#92400e' }
             ].map(status => (
               <button key={status.id} onClick={() => { setActiveStatusFilter(status.id); setShowStatusMenu(true); }} style={{ padding: '8px 10px', borderRadius: '6px', border: 'none', cursor: 'pointer', background: status.color, color: 'white', fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
@@ -834,8 +223,8 @@ function SetupView(props) {
 }
 
 // MANAGER VIEW COMPONENT
-function ManagerView(props) {
-  const { shiftData, machines, zones, machineStatuses, getShiftLabel, getShiftColor, getZoneForMachine, STATUS_COLORS, drawZoneConnections, getRemainingWorkers } = props;
+export function ManagerView(props) {
+  const { shiftData, machines, zones, machineStatuses, getShiftLabel, getShiftColor, getMemberEPF, getZoneForMachine, STATUS_COLORS, drawZoneConnections, getRemainingWorkers } = props;
 
   return (
     <div>
@@ -864,8 +253,8 @@ function ManagerView(props) {
                 <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#1e40af' }}>{shiftData[shift].totalAttendance}</p>
               </div>
               <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Machine Assign</p>
-                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#10b981' }}>{shiftData[shift].machineAssignCount || 0}</p>
+                <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Assigned EPFs</p>
+                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#059669' }}>{shiftData[shift].teamMembers.length}</p>
               </div>
               <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                 <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Other Workers</p>
@@ -887,11 +276,19 @@ function ManagerView(props) {
                 <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Remaining</p>
                 <p style={{ fontSize: '22px', fontWeight: 'bold', color: getRemainingWorkers(shift) >= 0 ? '#059669' : '#dc2626' }}>{getRemainingWorkers(shift)}</p>
               </div>
+              <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Machines Assigned</p>
+                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#7c3aed' }}>{machinesWithAssignments}</p>
+              </div>
+              <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Total Assignments</p>
+                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#2563eb' }}>{totalAssigned}</p>
+              </div>
             </div>
             
             {machinesWithAssignments > 0 && (
               <div style={{ background: 'white', borderRadius: '8px', padding: '16px', maxHeight: '250px', overflowY: 'auto' }}>
-                <p style={{ fontWeight: '600', marginBottom: '8px', color: '#374151' }}>Machine Assignments Breakdown:</p>
+                <p style={{ fontWeight: '600', marginBottom: '8px', color: '#374151' }}>Machine Assignments:</p>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
                   {Object.entries(shiftData[shift].assignments).map(([machineId, memberIds]) => {
                     if (!Array.isArray(memberIds) || memberIds.length === 0) return null;
@@ -959,11 +356,13 @@ function ManagerView(props) {
 }
 
 // MAP EDITOR VIEW COMPONENT
-function MapEditorView(props) {
-  const { machines, zones, editMode, setEditMode, newMachineName, setNewMachineName,
+export function MapEditorView(props) {
+  const { machines, setMachines, zones, setZones, editMode, setEditMode, newMachineName, setNewMachineName,
     newZoneName, setNewZoneName, newZoneColor, setNewZoneColor, handleMachineDrag, addNewMachine,
-    deleteMachine, addNewZone, deleteZone, assignMachineToZone, removeMachineFromZone, getZoneForMachine, drawZoneConnections,
-    setSaveStatus } = props;
+    deleteMachine, addNewZone, deleteZone, assignMachineToZone, getZoneForMachine, drawZoneConnections,
+    setHasUnsavedChanges, setSaveStatus } = props;
+
+  const [selectedMachineForZone, setSelectedMachineForZone] = React.useState(null);
 
   return (
     <div>
@@ -1025,10 +424,7 @@ function MapEditorView(props) {
             <p style={{ fontSize: '13px', marginBottom: '8px' }}>{zone.machines.length} machines</p>
             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
               {zone.machines.map(m => (
-                <span key={m} style={{ fontSize: '11px', padding: '4px 8px', background: 'white', borderRadius: '4px', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                  {m}
-                  <button onClick={() => removeMachineFromZone(m, zone.id)} style={{ border: 'none', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: '50%', width: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '10px' }}>×</button>
-                </span>
+                <span key={m} style={{ fontSize: '11px', padding: '4px 8px', background: 'white', borderRadius: '4px', fontWeight: '600' }}>{m}</span>
               ))}
             </div>
             <div style={{ marginTop: '8px' }}>
@@ -1084,5 +480,3 @@ function MapEditorView(props) {
     </div>
   );
 }
-
-export default App;
