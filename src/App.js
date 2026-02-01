@@ -19,6 +19,7 @@ function App() {
   });
   const [machines, setMachines] = useState([]);
   const [zones, setZones] = useState([]);
+  const [zoneLabelPositions, setZoneLabelPositions] = useState({}); // NEW: For draggable zone names
   const [newMemberEPF, setNewMemberEPF] = useState('');
   const [selectedMachine, setSelectedMachine] = useState(null);
   const [showMemberModal, setShowMemberModal] = useState(false);
@@ -77,6 +78,7 @@ function App() {
     try {
       await loadMachinePositions();
       await loadZoneDefinitions();
+      await loadZoneLabelPositions(); // NEW: Load zone label positions
       await loadShiftSettings();
       await loadAttendance();
       await loadWorkerCounts();
@@ -109,6 +111,17 @@ function App() {
       setZones(DEFAULT_ZONES);
     } else {
       setZones(data.map(z => ({ id: z.id, name: z.zone_name, machines: z.machines || [], color: z.color || '#f3f4f6' })));
+    }
+  };
+
+  const loadZoneLabelPositions = async () => {
+    const { data } = await supabase.from('zone_label_positions').select('*');
+    if (data && data.length > 0) {
+      const positions = {};
+      data.forEach(p => {
+        positions[p.zone_id] = { x: p.x_position, y: p.y_position };
+      });
+      setZoneLabelPositions(positions);
     }
   };
 
@@ -351,6 +364,15 @@ function App() {
         for (const z of zones) {
           await supabase.from('zone_definitions').insert([{ id: z.id, zone_name: z.name, color: z.color, machines: z.machines }]);
         }
+        // Save zone label positions
+        await supabase.from('zone_label_positions').delete().neq('id', 0);
+        for (const [zoneId, pos] of Object.entries(zoneLabelPositions)) {
+          await supabase.from('zone_label_positions').insert([{
+            zone_id: parseInt(zoneId),
+            x_position: pos.x,
+            y_position: pos.y
+          }]);
+        }
       }
 
       setSaveStatus('✅ Saved!');
@@ -376,6 +398,15 @@ function App() {
   const handleMachineDrag = (machine, x, y) => {
     setMachines(prev => prev.map(m => m.id === machine.id ? { ...m, x, y } : m));
     setHasUnsavedChanges(true);
+  };
+
+  const handleZoneLabelDrag = (zoneId, x, y) => {
+    setZoneLabelPositions(prev => ({
+      ...prev,
+      [zoneId]: { x, y }
+    }));
+    setHasUnsavedChanges(true);
+    setSaveStatus('⚠️ Unsaved changes');
   };
 
   const addNewMachine = () => {
@@ -485,7 +516,7 @@ function App() {
     return d.totalAttendance - d.otherWorkersCount - d.webTransportCount - d.reWorkCount - d.warpBeamCount - (d.machineAssignCount || 0) - (d.setupAlterationCount || 0);
   };
 
-  // UPDATED: Draw zone connections AND zone names on map
+  // UPDATED: Draw zone connections AND draggable zone names on map
   const drawZoneConnections = () => {
     const elements = [];
     zones.forEach(zone => {
@@ -507,27 +538,60 @@ function App() {
         }
       }
       
-      // Draw zone name near the zone's machines
+      // Draw zone name with saved position or default position
       if (zone.machines.length > 0) {
-        const firstMachineId = zone.machines[0];
-        const firstMachine = machines.find(m => m.id === firstMachineId);
-        if (firstMachine) {
-          elements.push(
-            <text 
-              key={`zname-${zone.id}`}
-              x={firstMachine.x - 60}
-              y={firstMachine.y - 50}
-              style={{ 
-                fontSize: '14px', 
-                fontWeight: 'bold', 
-                fill: zone.color === '#f3f4f6' ? '#374151' : '#1f2937',
-                textDecoration: 'underline'
-              }}
-            >
-              {zone.name}
-            </text>
-          );
+        const labelPos = zoneLabelPositions[zone.id];
+        let labelX, labelY;
+        
+        if (labelPos) {
+          // Use saved position
+          labelX = labelPos.x;
+          labelY = labelPos.y;
+        } else {
+          // Use default position near first machine
+          const firstMachine = machines.find(m => m.id === zone.machines[0]);
+          if (firstMachine) {
+            labelX = firstMachine.x - 60;
+            labelY = firstMachine.y - 50;
+          } else {
+            return;
+          }
         }
+        
+        elements.push(
+          <text 
+            key={`zname-${zone.id}`}
+            x={labelX}
+            y={labelY}
+            style={{ 
+              fontSize: '14px', 
+              fontWeight: 'bold', 
+              fill: zone.color === '#f3f4f6' ? '#374151' : '#1f2937',
+              textDecoration: 'underline',
+              cursor: editMode ? 'move' : 'default',
+              userSelect: 'none'
+            }}
+            onMouseDown={(e) => {
+              if (!editMode) return;
+              const svg = e.currentTarget.closest('svg');
+              const handleMove = (moveE) => {
+                const rect = svg.getBoundingClientRect();
+                const x = Math.round(moveE.clientX - rect.left);
+                const y = Math.round(moveE.clientY - rect.top);
+                handleZoneLabelDrag(zone.id, x, y);
+              };
+              const handleUp = () => {
+                document.removeEventListener('mousemove', handleMove);
+                document.removeEventListener('mouseup', handleUp);
+              };
+              document.addEventListener('mousemove', handleMove);
+              document.addEventListener('mouseup', handleUp);
+              e.preventDefault();
+            }}
+          >
+            {zone.name}
+          </text>
+        );
       }
     });
     return elements;
@@ -546,6 +610,7 @@ function App() {
 
   const props = {
     activeShift, shiftData, machines, setMachines, zones, setZones, machineStatuses,
+    zoneLabelPositions, handleZoneLabelDrag, // NEW: Zone label drag props
     newMemberEPF, setNewMemberEPF, selectedMachine, setSelectedMachine,
     showMemberModal, setShowMemberModal, showStatusMenu, setShowStatusMenu,
     activeStatusFilter, setActiveStatusFilter, toggleDayNight, updateTotalAttendance,
