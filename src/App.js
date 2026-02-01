@@ -2,20 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, Monitor, Grid3x3, Eye, Trash2, Plus, X, Clock, RefreshCw, 
   Wrench, Code, Edit, XCircle, Sun, Moon, Save, UserCheck, 
-  AlertCircle, Settings, Move, Download, Play
+  AlertCircle, Settings, Move, Download, Play 
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 // ============================================
-// COMPLETE UPDATED APP - WITH RUNNING STATUS & FINAL OVERVIEW CSV
+// COMPLETE APP - FINAL VERSION WITH ALL FEATURES
 // ============================================
 
 function App() {
   const [activeShift, setActiveShift] = useState('A');
   const [shiftData, setShiftData] = useState({
-    A: { teamMembers: [], assignments: {}, dayNight: 'day', totalAttendance: 0, otherWorkersCount: 0, webTransportCount: 0, reWorkCount: 0, warpBeamCount: 0, machineAssignCount: 0 },
-    B: { teamMembers: [], assignments: {}, dayNight: 'day', totalAttendance: 0, otherWorkersCount: 0, webTransportCount: 0, reWorkCount: 0, warpBeamCount: 0, machineAssignCount: 0 },
-    C: { teamMembers: [], assignments: {}, dayNight: 'night', totalAttendance: 0, otherWorkersCount: 0, webTransportCount: 0, reWorkCount: 0, warpBeamCount: 0, machineAssignCount: 0 }
+    A: { teamMembers: [], assignments: {}, dayNight: 'day', totalAttendance: 0, otherWorkersCount: 0, webTransportCount: 0, reWorkCount: 0, warpBeamCount: 0, machineAssignCount: 0, setupAlterationCount: 0 },
+    B: { teamMembers: [], assignments: {}, dayNight: 'day', totalAttendance: 0, otherWorkersCount: 0, webTransportCount: 0, reWorkCount: 0, warpBeamCount: 0, machineAssignCount: 0, setupAlterationCount: 0 },
+    C: { teamMembers: [], assignments: {}, dayNight: 'night', totalAttendance: 0, otherWorkersCount: 0, webTransportCount: 0, reWorkCount: 0, warpBeamCount: 0, machineAssignCount: 0, setupAlterationCount: 0 }
   });
   const [machines, setMachines] = useState([]);
   const [zones, setZones] = useState([]);
@@ -49,7 +49,7 @@ function App() {
     'development': '#eab308',
     'setup': '#3b82f6',
     'alteration': '#ef4444',
-    'running': '#10b981'  // FIXED: Changed from 'runing' to 'running' with proper color
+    'running': '#10b981'
   };
 
   useEffect(() => {
@@ -146,6 +146,7 @@ function App() {
             newData[w.shift].reWorkCount = w.re_work || 0;
             newData[w.shift].warpBeamCount = w.warp_beam || 0;
             newData[w.shift].machineAssignCount = w.machine_assign || 0;
+            newData[w.shift].setupAlterationCount = w.setup_alteration || 0;
           }
         });
         return newData;
@@ -309,7 +310,8 @@ function App() {
           web_transport: shiftData[shift].webTransportCount, 
           re_work: shiftData[shift].reWorkCount, 
           warp_beam: shiftData[shift].warpBeamCount,
-          machine_assign: shiftData[shift].machineAssignCount 
+          machine_assign: shiftData[shift].machineAssignCount,
+          setup_alteration: shiftData[shift].setupAlterationCount
         };
         if (ec) await supabase.from('worker_counts').update(cd).eq('shift', shift);
         else await supabase.from('worker_counts').insert([cd]);
@@ -426,29 +428,32 @@ function App() {
     setHasUnsavedChanges(true);
   };
 
-  // NEW: Final Overview CSV Download Function
+  // FINAL: CSV with per-shift attendance and Day/Night column
   const downloadFinalOverviewCSV = () => {
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     
     let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "Date,Shift,Other Workers Count,Web Transport Count,Re-Work Count,Warp Beam Count,Machine Assign Count,No. of Setup Count,No. of Alteration Count,Total Running Machine Count\n";
+    csvContent += "Date,Shift,Day/Night,Total Attendance,Other Workers,Web Transport,Re-Work,Warp Beam,Machine Assign,Setup/Alteration Assigned,Setup Count,Alteration Count,Running Count\n";
     
     ['A', 'B', 'C'].forEach(shift => {
       const d = shiftData[shift];
       
-      // Count machines by status for each shift
+      // Count machines by status
       const setupCount = Object.values(machineStatuses).filter(s => s === 'setup').length;
       const alterationCount = Object.values(machineStatuses).filter(s => s === 'alteration').length;
       const runningCount = Object.values(machineStatuses).filter(s => s === 'running').length;
       
       csvContent += `${dateStr},`;
       csvContent += `${shift},`;
+      csvContent += `${d.dayNight},`;  // Day/Night column
+      csvContent += `${d.totalAttendance},`;  // Per-shift attendance
       csvContent += `${d.otherWorkersCount},`;
       csvContent += `${d.webTransportCount},`;
       csvContent += `${d.reWorkCount},`;
       csvContent += `${d.warpBeamCount},`;
       csvContent += `${d.machineAssignCount},`;
+      csvContent += `${d.setupAlterationCount},`;
       csvContent += `${setupCount},`;
       csvContent += `${alterationCount},`;
       csvContent += `${runningCount}\n`;
@@ -477,17 +482,19 @@ function App() {
   
   const getRemainingWorkers = (shift) => {
     const d = shiftData[shift];
-    return d.totalAttendance - d.otherWorkersCount - d.webTransportCount - d.reWorkCount - d.warpBeamCount - (d.machineAssignCount || 0);
+    return d.totalAttendance - d.otherWorkersCount - d.webTransportCount - d.reWorkCount - d.warpBeamCount - (d.machineAssignCount || 0) - (d.setupAlterationCount || 0);
   };
 
+  // UPDATED: Draw zone connections AND zone names on map
   const drawZoneConnections = () => {
-    const c = [];
+    const elements = [];
     zones.forEach(zone => {
+      // Draw connection lines
       for (let i = 0; i < zone.machines.length - 1; i++) {
         const m1 = machines.find(m => m.id === zone.machines[i]);
         const m2 = machines.find(m => m.id === zone.machines[i + 1]);
         if (m1 && m2) {
-          c.push(
+          elements.push(
             <line 
               key={`z-${zone.id}-${i}`} 
               x1={m1.x} y1={m1.y} 
@@ -499,8 +506,31 @@ function App() {
           );
         }
       }
+      
+      // Draw zone name near the zone's machines
+      if (zone.machines.length > 0) {
+        const firstMachineId = zone.machines[0];
+        const firstMachine = machines.find(m => m.id === firstMachineId);
+        if (firstMachine) {
+          elements.push(
+            <text 
+              key={`zname-${zone.id}`}
+              x={firstMachine.x - 60}
+              y={firstMachine.y - 50}
+              style={{ 
+                fontSize: '14px', 
+                fontWeight: 'bold', 
+                fill: zone.color === '#f3f4f6' ? '#374151' : '#1f2937',
+                textDecoration: 'underline'
+              }}
+            >
+              {zone.name}
+            </text>
+          );
+        }
+      }
     });
-    return c;
+    return elements;
   };
 
   if (loading) {
@@ -608,10 +638,6 @@ function App() {
   );
 }
 
-// ============================================
-// PART 2: VIEW COMPONENTS
-// ============================================
-
 // SETUP VIEW COMPONENT
 function SetupView(props) {
   const { shiftData, activeShift, machines, zones, machineStatuses, newMemberEPF, setNewMemberEPF,
@@ -628,7 +654,6 @@ function SetupView(props) {
       
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         
-        {/* Total Attendance */}
         <div style={{ background: '#e0f2fe', borderRadius: '8px', padding: '12px', border: '2px solid #0ea5e9' }}>
           <h3 style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '8px', color: '#0c4a6e', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <UserCheck size={16} /> Total Attendance
@@ -638,6 +663,10 @@ function SetupView(props) {
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
               <span>Machine Assign:</span>
               <span style={{ fontWeight: 'bold', color: '#10b981' }}>{currentData.machineAssignCount || 0}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+              <span>Setup/Alteration:</span>
+              <span style={{ fontWeight: 'bold', color: '#8b5cf6' }}>{currentData.setupAlterationCount || 0}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
               <span>Other Workers:</span>
@@ -664,13 +693,17 @@ function SetupView(props) {
           </div>
         </div>
 
-        {/* Machine Assign Section */}
         <div style={{ background: '#dcfce7', borderRadius: '8px', padding: '12px', border: '2px solid #10b981' }}>
           <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#064e3b' }}>Machine Assign</h3>
           <input type="number" min="0" value={currentData.machineAssignCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'machineAssignCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #10b981', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
         </div>
 
-        {/* Worker Count Sections */}
+        {/* NEW: Setup/Alteration Assigned Count Section */}
+        <div style={{ background: '#f3e8ff', borderRadius: '8px', padding: '12px', border: '2px solid #8b5cf6' }}>
+          <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#5b21b6' }}>Setup/Alteration Assigned</h3>
+          <input type="number" min="0" value={currentData.setupAlterationCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'setupAlterationCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #8b5cf6', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
+        </div>
+
         <div style={{ background: '#fef3c7', borderRadius: '8px', padding: '12px', border: '2px solid #fbbf24' }}>
           <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#92400e' }}>Other Workers</h3>
           <input type="number" min="0" value={currentData.otherWorkersCount} onChange={(e) => updateWorkerCount(activeShift, 'otherWorkersCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #fbbf24', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
@@ -691,7 +724,6 @@ function SetupView(props) {
           <input type="number" min="0" value={currentData.warpBeamCount} onChange={(e) => updateWorkerCount(activeShift, 'warpBeamCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #06b6d4', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
         </div>
 
-        {/* Machine Status - WITH RUNNING BUTTON ADDED */}
         <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '12px', border: '2px solid #e5e7eb' }}>
           <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '8px', color: '#374151' }}>Machine Status</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -699,7 +731,7 @@ function SetupView(props) {
               { id: 'setup', label: 'Setup', icon: Wrench, color: '#3b82f6' },
               { id: 'development', label: 'Development', icon: Code, color: '#eab308' },
               { id: 'alteration', label: 'Alteration', icon: Edit, color: '#ef4444' },
-              { id: 'running', label: 'Running', icon: Play, color: '#10b981' },  // ADDED RUNNING BUTTON
+              { id: 'running', label: 'Running', icon: Play, color: '#10b981' },
               { id: 'no-order', label: 'No Order', icon: XCircle, color: '#92400e' }
             ].map(status => (
               <button key={status.id} onClick={() => { setActiveStatusFilter(status.id); setShowStatusMenu(true); }} style={{ padding: '8px 10px', borderRadius: '6px', border: 'none', cursor: 'pointer', background: status.color, color: 'white', fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
@@ -710,7 +742,6 @@ function SetupView(props) {
           </div>
         </div>
 
-        {/* Assigned EPFs */}
         <div style={{ background: getShiftColor(activeShift), borderRadius: '8px', padding: '12px', border: '2px solid #d1d5db' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
             <h2 style={{ fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
@@ -743,7 +774,6 @@ function SetupView(props) {
         </div>
       </div>
 
-      {/* Machine Map */}
       <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h2 style={{ fontSize: 'clamp(16px, 3vw, 20px)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
@@ -753,7 +783,7 @@ function SetupView(props) {
         </div>
         
         <div style={{ background: 'white', borderRadius: '8px', padding: '16px', height: '550px', overflow: 'auto' }}>
-          <svg width="900" height="1150" style={{ maxWidth: '100%', height: 'auto' }}>
+          <svg width="900" height="1200" style={{ maxWidth: '100%', height: 'auto' }}>
             {drawZoneConnections()}
             {machines.map(machine => {
               const zone = getZoneForMachine(machine.id);
@@ -776,7 +806,6 @@ function SetupView(props) {
         </div>
       </div>
 
-      {/* Member Assignment Modal */}
       {showMemberModal && selectedMachine && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
           <div style={{ background: 'white', borderRadius: '8px', padding: '24px', maxWidth: '28rem', width: '90%', margin: '0 16px', maxHeight: '90vh', overflowY: 'auto' }}>
@@ -805,7 +834,6 @@ function SetupView(props) {
         </div>
       )}
 
-      {/* Status Selection Modal */}
       {showStatusMenu && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
           <div style={{ background: 'white', borderRadius: '8px', padding: '24px', maxWidth: '600px', width: '90%', margin: '0 16px', maxHeight: '80vh', overflowY: 'auto' }}>
@@ -866,6 +894,10 @@ function ManagerView(props) {
               <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                 <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Machine Assign</p>
                 <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#10b981' }}>{shiftData[shift].machineAssignCount || 0}</p>
+              </div>
+              <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Setup/Alteration</p>
+                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#8b5cf6' }}>{shiftData[shift].setupAlterationCount || 0}</p>
               </div>
               <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                 <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Other Workers</p>
