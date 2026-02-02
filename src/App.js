@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, Monitor, Grid3x3, Eye, Trash2, Plus, X, Clock, RefreshCw, 
   Wrench, Code, Edit, XCircle, Sun, Moon, Save, UserCheck, 
-  AlertCircle, Settings, Move, Download, Play 
+  AlertCircle, Settings, Move, Download, Play, Plane
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
@@ -13,9 +13,9 @@ import { supabase } from './supabaseClient';
 function App() {
   const [activeShift, setActiveShift] = useState('A');
   const [shiftData, setShiftData] = useState({
-    A: { teamMembers: [], assignments: {}, dayNight: 'day', totalAttendance: 0, otherWorkersCount: 0, webTransportCount: 0, reWorkCount: 0, warpBeamCount: 0, machineAssignCount: 0, setupAlterationCount: 0 },
-    B: { teamMembers: [], assignments: {}, dayNight: 'day', totalAttendance: 0, otherWorkersCount: 0, webTransportCount: 0, reWorkCount: 0, warpBeamCount: 0, machineAssignCount: 0, setupAlterationCount: 0 },
-    C: { teamMembers: [], assignments: {}, dayNight: 'night', totalAttendance: 0, otherWorkersCount: 0, webTransportCount: 0, reWorkCount: 0, warpBeamCount: 0, machineAssignCount: 0, setupAlterationCount: 0 }
+    A: { teamMembers: [], assignments: {}, dayNight: 'day', totalAttendance: 0, otherWorkersCount: 0, webTransportCount: 0, reWorkCount: 0, warpBeamCount: 0, machineAssignCount: 0, setupAlterationCount: 0, tlCount: 0, greigeBoilCount: 0, yarnPreparationCount: 0, pilotCount: 0 },
+    B: { teamMembers: [], assignments: {}, dayNight: 'day', totalAttendance: 0, otherWorkersCount: 0, webTransportCount: 0, reWorkCount: 0, warpBeamCount: 0, machineAssignCount: 0, setupAlterationCount: 0, tlCount: 0, greigeBoilCount: 0, yarnPreparationCount: 0, pilotCount: 0 },
+    C: { teamMembers: [], assignments: {}, dayNight: 'night', totalAttendance: 0, otherWorkersCount: 0, webTransportCount: 0, reWorkCount: 0, warpBeamCount: 0, machineAssignCount: 0, setupAlterationCount: 0, tlCount: 0, greigeBoilCount: 0, yarnPreparationCount: 0, pilotCount: 0 }
   });
   const [machines, setMachines] = useState([]);
   const [zones, setZones] = useState([]);
@@ -50,12 +50,26 @@ function App() {
     'development': '#eab308',
     'setup': '#3b82f6',
     'alteration': '#ef4444',
-    'running': '#10b981'
+    'running': '#10b981',
+    'pilot': '#f97316'
   };
 
   useEffect(() => {
     loadAllData();
   }, []);
+
+  // Warn when leaving page with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes! Please save before leaving.';
+        return e.returnValue;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   const getDefaultMachineLayout = () => {
     return [
@@ -160,6 +174,10 @@ function App() {
             newData[w.shift].warpBeamCount = w.warp_beam || 0;
             newData[w.shift].machineAssignCount = w.machine_assign || 0;
             newData[w.shift].setupAlterationCount = w.setup_alteration || 0;
+            newData[w.shift].tlCount = w.tl || 0;
+            newData[w.shift].greigeBoilCount = w.greige_boil || 0;
+            newData[w.shift].yarnPreparationCount = w.yarn_preparation || 0;
+            newData[w.shift].pilotCount = w.pilot || 0;
           }
         });
         return newData;
@@ -355,6 +373,18 @@ function App() {
         await supabase.from('machine_statuses').insert([{ machine_name: mn, status: st }]);
       }
 
+      // Save zone label positions ALWAYS (not just in edit mode)
+      if (Object.keys(zoneLabelPositions).length > 0) {
+        await supabase.from('zone_label_positions').delete().neq('id', 0);
+        for (const [zoneId, pos] of Object.entries(zoneLabelPositions)) {
+          await supabase.from('zone_label_positions').insert([{
+            zone_id: parseInt(zoneId),
+            x_position: pos.x,
+            y_position: pos.y
+          }]);
+        }
+      }
+
       if (editMode) {
         await supabase.from('machine_positions').delete().neq('id', 0);
         for (const m of machines) {
@@ -363,15 +393,6 @@ function App() {
         await supabase.from('zone_definitions').delete().neq('id', 0);
         for (const z of zones) {
           await supabase.from('zone_definitions').insert([{ id: z.id, zone_name: z.name, color: z.color, machines: z.machines }]);
-        }
-        // Save zone label positions
-        await supabase.from('zone_label_positions').delete().neq('id', 0);
-        for (const [zoneId, pos] of Object.entries(zoneLabelPositions)) {
-          await supabase.from('zone_label_positions').insert([{
-            zone_id: parseInt(zoneId),
-            x_position: pos.x,
-            y_position: pos.y
-          }]);
         }
       }
 
@@ -386,12 +407,27 @@ function App() {
     }
   };
 
-  const clearMap = () => {
-    if (window.confirm('Clear all allocations?')) {
-      setShiftData(prev => ({ ...prev, [activeShift]: { ...prev[activeShift], assignments: {} } }));
-      setMachineStatuses({});
+  const clearData = () => {
+    if (window.confirm('Clear all worker counts? (Machine status and EPFs will be kept)')) {
+      setShiftData(prev => ({ 
+        ...prev, 
+        [activeShift]: { 
+          ...prev[activeShift], 
+          totalAttendance: 0,
+          otherWorkersCount: 0,
+          webTransportCount: 0,
+          reWorkCount: 0,
+          warpBeamCount: 0,
+          machineAssignCount: 0,
+          setupAlterationCount: 0,
+          tlCount: 0,
+          greigeBoilCount: 0,
+          yarnPreparationCount: 0,
+          pilotCount: 0
+        } 
+      }));
       setHasUnsavedChanges(true);
-      setSaveStatus('⚠️ Cleared - Click SAVE');
+      setSaveStatus('⚠️ Data cleared - Click SAVE');
     }
   };
 
@@ -465,7 +501,7 @@ function App() {
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     
     let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "Date,Shift,Day/Night,Total Attendance,Other Workers,Web Transport,Re-Work,Warp Beam,Machine Assign,Setup/Alteration Assigned,Setup Count,Alteration Count,Running Count\n";
+    csvContent += "Date,Shift,Day/Night,Total Attendance,Other Workers,Web Transport,Re-Work,Warp Beam,Machine Assign,Setup/Alteration,TL,Greige/Boil,Yarn Preparation,Pilot,Setup Count,Alteration Count,Running Count,Pilot Count,Man to Machine Ratio\n";
     
     ['A', 'B', 'C'].forEach(shift => {
       const d = shiftData[shift];
@@ -474,20 +510,31 @@ function App() {
       const setupCount = Object.values(machineStatuses).filter(s => s === 'setup').length;
       const alterationCount = Object.values(machineStatuses).filter(s => s === 'alteration').length;
       const runningCount = Object.values(machineStatuses).filter(s => s === 'running').length;
+      const pilotCount = Object.values(machineStatuses).filter(s => s === 'pilot').length;
+      
+      // Calculate Man to Machine Ratio: Running Count / Machine Assign
+      const machineAssign = d.machineAssignCount || 0;
+      const manToMachineRatio = machineAssign > 0 ? (runningCount / machineAssign).toFixed(2) : '0.00';
       
       csvContent += `${dateStr},`;
       csvContent += `${shift},`;
-      csvContent += `${d.dayNight},`;  // Day/Night column
-      csvContent += `${d.totalAttendance},`;  // Per-shift attendance
+      csvContent += `${d.dayNight},`;
+      csvContent += `${d.totalAttendance},`;
       csvContent += `${d.otherWorkersCount},`;
       csvContent += `${d.webTransportCount},`;
       csvContent += `${d.reWorkCount},`;
       csvContent += `${d.warpBeamCount},`;
       csvContent += `${d.machineAssignCount},`;
       csvContent += `${d.setupAlterationCount},`;
+      csvContent += `${d.tlCount || 0},`;
+      csvContent += `${d.greigeBoilCount || 0},`;
+      csvContent += `${d.yarnPreparationCount || 0},`;
+      csvContent += `${d.pilotCount || 0},`;
       csvContent += `${setupCount},`;
       csvContent += `${alterationCount},`;
-      csvContent += `${runningCount}\n`;
+      csvContent += `${runningCount},`;
+      csvContent += `${pilotCount},`;
+      csvContent += `${manToMachineRatio}\n`;
     });
 
     const encodedUri = encodeURI(csvContent);
@@ -513,7 +560,9 @@ function App() {
   
   const getRemainingWorkers = (shift) => {
     const d = shiftData[shift];
-    return d.totalAttendance - d.otherWorkersCount - d.webTransportCount - d.reWorkCount - d.warpBeamCount - (d.machineAssignCount || 0) - (d.setupAlterationCount || 0);
+    return d.totalAttendance - d.otherWorkersCount - d.webTransportCount - d.reWorkCount - d.warpBeamCount - 
+           (d.machineAssignCount || 0) - (d.setupAlterationCount || 0) - (d.tlCount || 0) - 
+           (d.greigeBoilCount || 0) - (d.yarnPreparationCount || 0) - (d.pilotCount || 0);
   };
 
   // UPDATED: Draw zone connections AND draggable zone names on map
@@ -615,7 +664,7 @@ function App() {
     showMemberModal, setShowMemberModal, showStatusMenu, setShowStatusMenu,
     activeStatusFilter, setActiveStatusFilter, toggleDayNight, updateTotalAttendance,
     updateWorkerCount, addTeamMember, removeTeamMember, assignMemberToMachine,
-    setMachineStatus, clearMap, getMemberEPF, getZoneForMachine, getShiftColor,
+    setMachineStatus, clearData, getMemberEPF, getZoneForMachine, getShiftColor,
     getShiftLabel, getRemainingWorkers, drawZoneConnections, STATUS_COLORS,
     getCurrentShiftData, setSaveStatus, hasUnsavedChanges, setHasUnsavedChanges,
     editMode, setEditMode, newMachineName, setNewMachineName, newZoneName,
@@ -632,6 +681,10 @@ function App() {
         @media (max-width: 768px) {
           .grid-responsive { grid-template-columns: 1fr !important; }
           .shift-buttons { flex-wrap: wrap; }
+        }
+        @media (max-width: 480px) {
+          body { overflow-x: hidden; }
+          .grid-responsive { grid-template-columns: 1fr !important; gap: 12px !important; }
         }
       `}</style>
       <div style={{ maxWidth: '100%', margin: '0 auto' }}>
@@ -709,7 +762,7 @@ function SetupView(props) {
     selectedMachine, setSelectedMachine, showMemberModal, setShowMemberModal, showStatusMenu,
     setShowStatusMenu, activeStatusFilter, setActiveStatusFilter, toggleDayNight, updateTotalAttendance,
     updateWorkerCount, addTeamMember, removeTeamMember, assignMemberToMachine, setMachineStatus,
-    clearMap, getMemberEPF, getZoneForMachine, getShiftColor, getRemainingWorkers,
+    clearData, getMemberEPF, getZoneForMachine, getShiftColor, getRemainingWorkers,
     drawZoneConnections, STATUS_COLORS, getCurrentShiftData } = props;
 
   const currentData = getCurrentShiftData();
@@ -720,9 +773,15 @@ function SetupView(props) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         
         <div style={{ background: '#e0f2fe', borderRadius: '8px', padding: '12px', border: '2px solid #0ea5e9' }}>
-          <h3 style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '8px', color: '#0c4a6e', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <UserCheck size={16} /> Total Attendance
-          </h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <h3 style={{ fontSize: '13px', fontWeight: 'bold', margin: 0, color: '#0c4a6e', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <UserCheck size={16} /> Total Attendance
+            </h3>
+            <button onClick={() => toggleDayNight(activeShift)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '4px', border: 'none', cursor: 'pointer', background: shiftData[activeShift].dayNight === 'day' ? '#fbbf24' : '#4338ca', color: 'white', fontSize: '10px', fontWeight: '600' }}>
+              {shiftData[activeShift].dayNight === 'day' ? <Sun size={10} /> : <Moon size={10} />}
+              {shiftData[activeShift].dayNight === 'day' ? 'Day' : 'Night'}
+            </button>
+          </div>
           <input type="number" min="0" value={shiftData[activeShift].totalAttendance} onChange={(e) => updateTotalAttendance(activeShift, e.target.value)} placeholder="Enter total" style={{ width: '100%', padding: '8px', border: '2px solid #0ea5e9', borderRadius: '6px', fontSize: '15px', fontWeight: 'bold', textAlign: 'center' }} />
           <div style={{ marginTop: '8px', padding: '6px', background: 'white', borderRadius: '4px', fontSize: '11px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
@@ -748,6 +807,22 @@ function SetupView(props) {
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
               <span>Warp Beam:</span>
               <span style={{ fontWeight: 'bold', color: '#0891b2' }}>{currentData.warpBeamCount}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+              <span>TL:</span>
+              <span style={{ fontWeight: 'bold', color: '#ec4899' }}>{currentData.tlCount || 0}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+              <span>Greige/Boil:</span>
+              <span style={{ fontWeight: 'bold', color: '#6366f1' }}>{currentData.greigeBoilCount || 0}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+              <span>Yarn Prep:</span>
+              <span style={{ fontWeight: 'bold', color: '#14b8a6' }}>{currentData.yarnPreparationCount || 0}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+              <span>Pilot:</span>
+              <span style={{ fontWeight: 'bold', color: '#f97316' }}>{currentData.pilotCount || 0}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '4px', borderTop: '1px solid #e5e7eb' }}>
               <span style={{ fontWeight: 'bold' }}>Remaining:</span>
@@ -789,6 +864,26 @@ function SetupView(props) {
           <input type="number" min="0" value={currentData.warpBeamCount} onChange={(e) => updateWorkerCount(activeShift, 'warpBeamCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #06b6d4', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
         </div>
 
+        <div style={{ background: '#fce7f3', borderRadius: '8px', padding: '12px', border: '2px solid #ec4899' }}>
+          <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#9f1239' }}>TL</h3>
+          <input type="number" min="0" value={currentData.tlCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'tlCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #ec4899', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
+        </div>
+
+        <div style={{ background: '#e0e7ff', borderRadius: '8px', padding: '12px', border: '2px solid #6366f1' }}>
+          <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#4338ca' }}>Greige/Boil</h3>
+          <input type="number" min="0" value={currentData.greigeBoilCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'greigeBoilCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #6366f1', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
+        </div>
+
+        <div style={{ background: '#ccfbf1', borderRadius: '8px', padding: '12px', border: '2px solid #14b8a6' }}>
+          <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#115e59' }}>Yarn Preparation</h3>
+          <input type="number" min="0" value={currentData.yarnPreparationCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'yarnPreparationCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #14b8a6', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
+        </div>
+
+        <div style={{ background: '#ffedd5', borderRadius: '8px', padding: '12px', border: '2px solid #f97316' }}>
+          <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#9a3412' }}>Pilot</h3>
+          <input type="number" min="0" value={currentData.pilotCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'pilotCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #f97316', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
+        </div>
+
         <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '12px', border: '2px solid #e5e7eb' }}>
           <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '8px', color: '#374151' }}>Machine Status</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -797,6 +892,7 @@ function SetupView(props) {
               { id: 'development', label: 'Development', icon: Code, color: '#eab308' },
               { id: 'alteration', label: 'Alteration', icon: Edit, color: '#ef4444' },
               { id: 'running', label: 'Running', icon: Play, color: '#10b981' },
+              { id: 'pilot', label: 'Pilot', icon: Plane, color: '#f97316' },
               { id: 'no-order', label: 'No Order', icon: XCircle, color: '#92400e' }
             ].map(status => (
               <button key={status.id} onClick={() => { setActiveStatusFilter(status.id); setShowStatusMenu(true); }} style={{ padding: '8px 10px', borderRadius: '6px', border: 'none', cursor: 'pointer', background: status.color, color: 'white', fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
@@ -808,14 +904,10 @@ function SetupView(props) {
         </div>
 
         <div style={{ background: getShiftColor(activeShift), borderRadius: '8px', padding: '12px', border: '2px solid #d1d5db' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+          <div style={{ marginBottom: '6px' }}>
             <h2 style={{ fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
               <Users size={14} /> Assigned EPFs
             </h2>
-            <button onClick={() => toggleDayNight(activeShift)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '3px 6px', borderRadius: '4px', border: 'none', cursor: 'pointer', background: shiftData[activeShift].dayNight === 'day' ? '#fbbf24' : '#4338ca', color: 'white', fontSize: '10px', fontWeight: '600' }}>
-              {shiftData[activeShift].dayNight === 'day' ? <Sun size={10} /> : <Moon size={10} />}
-              {shiftData[activeShift].dayNight === 'day' ? 'Day' : 'Night'}
-            </button>
           </div>
           <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
             <input type="text" value={newMemberEPF} onChange={(e) => setNewMemberEPF(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addTeamMember()} placeholder="Enter EPF" style={{ flex: 1, padding: '5px 6px', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: '11px' }} />
@@ -840,34 +932,39 @@ function SetupView(props) {
       </div>
 
       <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
           <h2 style={{ fontSize: 'clamp(16px, 3vw, 20px)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <Grid3x3 size={20} /> Machine Map
           </h2>
-          <button onClick={clearMap} style={{ background: '#dc2626', color: 'white', padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px' }}>Clear Map</button>
+          <button onClick={clearData} style={{ background: '#dc2626', color: 'white', padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Trash2 size={16} />
+            Clear Data
+          </button>
         </div>
         
-        <div style={{ background: 'white', borderRadius: '8px', padding: '16px', height: '550px', overflow: 'auto' }}>
-          <svg width="900" height="1200" style={{ maxWidth: '100%', height: 'auto' }}>
-            {drawZoneConnections()}
-            {machines.map(machine => {
-              const zone = getZoneForMachine(machine.id);
-              const assignedMemberIds = currentData.assignments[machine.id] || [];
-              const machineStatus = machineStatuses[machine.id];
-              const fillColor = machineStatus ? STATUS_COLORS[machineStatus] : (zone ? zone.color : '#e5e7eb');
-              
-              return (
-                <g key={machine.id}>
-                  <rect x={machine.x - 45} y={machine.y - 35} width="90" height="70" fill={fillColor} stroke={assignedMemberIds.length > 0 ? '#10b981' : '#9ca3af'} strokeWidth="2" rx="8" style={{ cursor: 'pointer' }} onClick={() => { setSelectedMachine(machine); setShowMemberModal(true); }} />
-                  <text x={machine.x} y={machine.y - 15} textAnchor="middle" style={{ fontSize: '11px', fontWeight: 'bold', fill: machineStatus ? 'white' : '#374151', pointerEvents: 'none' }}>{machine.id}</text>
-                  <text x={machine.x} y={machine.y} textAnchor="middle" style={{ fontSize: '10px', fill: machineStatus ? 'white' : '#6b7280', pointerEvents: 'none' }}>{assignedMemberIds.length > 0 ? `${assignedMemberIds.length}/5` : '0/5'}</text>
-                  {assignedMemberIds.length > 0 && (
-                    <text x={machine.x} y={machine.y + 15} textAnchor="middle" style={{ fontSize: '9px', fill: machineStatus ? 'white' : '#059669', pointerEvents: 'none', fontWeight: '600' }}>{getMemberEPF(assignedMemberIds[0]).substring(0, 8)}</text>
-                  )}
-                </g>
-              );
-            })}
-          </svg>
+        <div style={{ background: 'white', borderRadius: '8px', padding: '12px', height: '550px', overflow: 'auto', WebkitOverflowScrolling: 'touch', position: 'relative' }}>
+          <div style={{ minWidth: '900px', minHeight: '1200px' }}>
+            <svg width="900" height="1200" style={{ display: 'block' }}>
+              {drawZoneConnections()}
+              {machines.map(machine => {
+                const zone = getZoneForMachine(machine.id);
+                const assignedMemberIds = currentData.assignments[machine.id] || [];
+                const machineStatus = machineStatuses[machine.id];
+                const fillColor = machineStatus ? STATUS_COLORS[machineStatus] : (zone ? zone.color : '#e5e7eb');
+                
+                return (
+                  <g key={machine.id}>
+                    <rect x={machine.x - 45} y={machine.y - 35} width="90" height="70" fill={fillColor} stroke={assignedMemberIds.length > 0 ? '#10b981' : '#9ca3af'} strokeWidth="2" rx="8" style={{ cursor: 'pointer' }} onClick={() => { setSelectedMachine(machine); setShowMemberModal(true); }} />
+                    <text x={machine.x} y={machine.y - 15} textAnchor="middle" style={{ fontSize: '11px', fontWeight: 'bold', fill: machineStatus ? 'white' : '#374151', pointerEvents: 'none' }}>{machine.id}</text>
+                    <text x={machine.x} y={machine.y} textAnchor="middle" style={{ fontSize: '10px', fill: machineStatus ? 'white' : '#6b7280', pointerEvents: 'none' }}>{assignedMemberIds.length > 0 ? `${assignedMemberIds.length}/5` : '0/5'}</text>
+                    {assignedMemberIds.length > 0 && (
+                      <text x={machine.x} y={machine.y + 15} textAnchor="middle" style={{ fontSize: '9px', fill: machineStatus ? 'white' : '#059669', pointerEvents: 'none', fontWeight: '600' }}>{getMemberEPF(assignedMemberIds[0]).substring(0, 8)}</text>
+                    )}
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
         </div>
       </div>
 
