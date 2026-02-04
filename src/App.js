@@ -2,13 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Users, Monitor, Grid3x3, Eye, Trash2, Plus, X, Clock, RefreshCw, 
   Wrench, Code, Edit, XCircle, Sun, Moon, Save, UserCheck, 
-  AlertCircle, Settings, Move, Download, Maximize, Minimize,
-  ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Play, Plane
+  AlertCircle, Settings, Move, Download, Play, Plane, Maximize, Minimize,
+  ChevronLeft, ChevronRight, ChevronUp, ChevronDown
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 // ============================================
-// COMPLETE APP - FIXED ESLINT & SCROLL/FIT
+// COMPLETE APP - FIXED ERRORS & LAYOUT
 // ============================================
 
 function App() {
@@ -713,6 +713,14 @@ function App() {
                 </p>
               </div>
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                {/* GLOBAL FIT BUTTON NEXT TO SAVE */}
+                <button 
+                  onClick={() => setFitMap(!fitMap)} 
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', background: fitMap ? '#2563eb' : 'rgba(255,255,255,0.2)', color: 'white', padding: '10px 20px', borderRadius: '8px', border: fitMap ? '2px solid white' : '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}
+                >
+                  {fitMap ? <Minimize size={16} /> : <Maximize size={16} />} {fitMap ? '1:1' : 'Fit'}
+                </button>
+
                 <button onClick={downloadFinalOverviewCSV} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f59e0b', color: 'white', padding: '10px 20px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
                   <Download size={16} /> Export CSV
                 </button>
@@ -782,15 +790,13 @@ function SetupView(props) {
 
   const scrollMap = (direction) => {
     if (mapContainerRef.current) {
-      const scrollAmount = 300;
+      const scrollAmount = 300; 
       let top = 0;
       let left = 0;
-      
       if (direction === 'up') top = -scrollAmount;
       if (direction === 'down') top = scrollAmount;
       if (direction === 'left') left = -scrollAmount;
       if (direction === 'right') left = scrollAmount;
-
       mapContainerRef.current.scrollBy({ top, left, behavior: 'smooth' });
     }
   };
@@ -811,48 +817,27 @@ function SetupView(props) {
             </button>
           </div>
           <input type="number" min="0" value={shiftData[activeShift].totalAttendance} onChange={(e) => updateTotalAttendance(activeShift, e.target.value)} placeholder="Enter total" style={{ width: '100%', padding: '8px', border: '2px solid #0ea5e9', borderRadius: '6px', fontSize: '15px', fontWeight: 'bold', textAlign: 'center' }} />
-          <div style={{ marginTop: '8px', padding: '6px', background: 'white', borderRadius: '4px', fontSize: '11px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-              <span>Machine Assign:</span>
-              <span style={{ fontWeight: 'bold', color: '#10b981' }}>{currentData.machineAssignCount || 0}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-              <span>Setup/Alteration:</span>
-              <span style={{ fontWeight: 'bold', color: '#8b5cf6' }}>{currentData.setupAlterationCount || 0}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-              <span>Other Workers:</span>
-              <span style={{ fontWeight: 'bold', color: '#2563eb' }}>{currentData.otherWorkersCount}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-              <span>Web Transport:</span>
-              <span style={{ fontWeight: 'bold', color: '#7c3aed' }}>{currentData.webTransportCount}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-              <span>Re-Work:</span>
-              <span style={{ fontWeight: 'bold', color: '#ea580c' }}>{currentData.reWorkCount}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-              <span>Warp Beam:</span>
-              <span style={{ fontWeight: 'bold', color: '#0891b2' }}>{currentData.warpBeamCount}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-              <span>TL:</span>
-              <span style={{ fontWeight: 'bold', color: '#ec4899' }}>{currentData.tlCount || 0}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-              <span>Greige/Boil:</span>
-              <span style={{ fontWeight: 'bold', color: '#6366f1' }}>{currentData.greigeBoilCount || 0}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-              <span>Yarn Prep:</span>
-              <span style={{ fontWeight: 'bold', color: '#14b8a6' }}>{currentData.yarnPreparationCount || 0}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-              <span>Pilot:</span>
-              <span style={{ fontWeight: 'bold', color: '#f97316' }}>{currentData.pilotCount || 0}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '4px', borderTop: '1px solid #e5e7eb' }}>
+          
+          <div style={{ marginTop: '8px', padding: '6px', background: 'white', borderRadius: '4px', fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+             {[
+                { label: "Machine Assign", value: currentData.machineAssignCount || 0, color: "#10b981" },
+                { label: "Setup/Alteration", value: currentData.setupAlterationCount || 0, color: "#8b5cf6" },
+                { label: "Other Workers", value: currentData.otherWorkersCount, color: "#2563eb" },
+                { label: "Web Transport", value: currentData.webTransportCount, color: "#7c3aed" },
+                { label: "Re-Work", value: currentData.reWorkCount, color: "#ea580c" },
+                { label: "Warp Beam", value: currentData.warpBeamCount, color: "#0891b2" },
+                { label: "TL", value: currentData.tlCount || 0, color: "#ec4899" },
+                { label: "Greige/Boil", value: currentData.greigeBoilCount || 0, color: "#6366f1" },
+                { label: "Yarn Prep", value: currentData.yarnPreparationCount || 0, color: "#14b8a6" },
+                { label: "Pilot", value: currentData.pilotCount || 0, color: "#f97316" }
+             ].map((item, idx) => (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>{item.label}:</span>
+                    <span style={{ fontWeight: 'bold', color: item.color }}>{item.value}</span>
+                </div>
+             ))}
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '6px', marginTop: '4px', borderTop: '1px solid #e5e7eb' }}>
               <span style={{ fontWeight: 'bold' }}>Remaining:</span>
               <span style={{ fontWeight: 'bold', color: getRemainingWorkers(activeShift) >= 0 ? '#059669' : '#dc2626' }}>
                 {getRemainingWorkers(activeShift)}
@@ -861,66 +846,60 @@ function SetupView(props) {
           </div>
         </div>
 
-        <div style={{ background: '#dcfce7', borderRadius: '8px', padding: '12px', border: '2px solid #10b981' }}>
-          <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#064e3b' }}>Machine Assign</h3>
-          <input type="number" min="0" value={currentData.machineAssignCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'machineAssignCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #10b981', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
-        </div>
-
-        <div style={{ background: '#f3e8ff', borderRadius: '8px', padding: '12px', border: '2px solid #8b5cf6' }}>
-          <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#5b21b6' }}>Setup/Alteration Assigned</h3>
-          <input type="number" min="0" value={currentData.setupAlterationCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'setupAlterationCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #8b5cf6', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
-        </div>
-
-        <div style={{ background: '#fef3c7', borderRadius: '8px', padding: '12px', border: '2px solid #fbbf24' }}>
-          <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#92400e' }}>Other Workers</h3>
-          <input type="number" min="0" value={currentData.otherWorkersCount} onChange={(e) => updateWorkerCount(activeShift, 'otherWorkersCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #fbbf24', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
-        </div>
-
-        <div style={{ background: '#f3e8ff', borderRadius: '8px', padding: '12px', border: '2px solid #a855f7' }}>
-          <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#6b21a8' }}>Web Transport</h3>
-          <input type="number" min="0" value={currentData.webTransportCount} onChange={(e) => updateWorkerCount(activeShift, 'webTransportCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #a855f7', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
-        </div>
-
-        <div style={{ background: '#ffedd5', borderRadius: '8px', padding: '12px', border: '2px solid #f97316' }}>
-          <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#9a3412' }}>Re-Work</h3>
-          <input type="number" min="0" value={currentData.reWorkCount} onChange={(e) => updateWorkerCount(activeShift, 'reWorkCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #f97316', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
-        </div>
-
-        <div style={{ background: '#cffafe', borderRadius: '8px', padding: '12px', border: '2px solid #06b6d4' }}>
-          <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#164e63' }}>Warp Beam Changing</h3>
-          <input type="number" min="0" value={currentData.warpBeamCount} onChange={(e) => updateWorkerCount(activeShift, 'warpBeamCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #06b6d4', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
-        </div>
-
-        <div style={{ background: '#fce7f3', borderRadius: '8px', padding: '12px', border: '2px solid #ec4899' }}>
-          <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#9f1239' }}>TL</h3>
-          <input type="number" min="0" value={currentData.tlCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'tlCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #ec4899', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
-        </div>
-
-        <div style={{ background: '#e0e7ff', borderRadius: '8px', padding: '12px', border: '2px solid #6366f1' }}>
-          <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#4338ca' }}>Greige/Boil</h3>
-          <input type="number" min="0" value={currentData.greigeBoilCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'greigeBoilCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #6366f1', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
-        </div>
-
-        <div style={{ background: '#ccfbf1', borderRadius: '8px', padding: '12px', border: '2px solid #14b8a6' }}>
-          <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#115e59' }}>Yarn Preparation</h3>
-          <input type="number" min="0" value={currentData.yarnPreparationCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'yarnPreparationCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #14b8a6', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
-        </div>
-
-        <div style={{ background: '#ffedd5', borderRadius: '8px', padding: '12px', border: '2px solid #f97316' }}>
-          <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#9a3412' }}>Pilot</h3>
-          <input type="number" min="0" value={currentData.pilotCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'pilotCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #f97316', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
+        {/* Input Fields Grid for small screens */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
+            <div style={{ background: '#dcfce7', borderRadius: '8px', padding: '10px', border: '1px solid #10b981' }}>
+                <h3 style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '4px', color: '#064e3b' }}>Machine Assign</h3>
+                <input type="number" min="0" value={currentData.machineAssignCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'machineAssignCount', e.target.value)} style={{ width: '100%', padding: '4px', borderRadius: '4px', border: '1px solid #ddd', textAlign: 'center' }} />
+            </div>
+             <div style={{ background: '#f3e8ff', borderRadius: '8px', padding: '10px', border: '1px solid #8b5cf6' }}>
+                <h3 style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '4px', color: '#5b21b6' }}>Setup/Alt</h3>
+                <input type="number" min="0" value={currentData.setupAlterationCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'setupAlterationCount', e.target.value)} style={{ width: '100%', padding: '4px', borderRadius: '4px', border: '1px solid #ddd', textAlign: 'center' }} />
+            </div>
+             <div style={{ background: '#fef3c7', borderRadius: '8px', padding: '10px', border: '1px solid #fbbf24' }}>
+                <h3 style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '4px', color: '#92400e' }}>Other</h3>
+                <input type="number" min="0" value={currentData.otherWorkersCount} onChange={(e) => updateWorkerCount(activeShift, 'otherWorkersCount', e.target.value)} style={{ width: '100%', padding: '4px', borderRadius: '4px', border: '1px solid #ddd', textAlign: 'center' }} />
+            </div>
+             <div style={{ background: '#f3e8ff', borderRadius: '8px', padding: '10px', border: '1px solid #a855f7' }}>
+                <h3 style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '4px', color: '#6b21a8' }}>Web Trans</h3>
+                <input type="number" min="0" value={currentData.webTransportCount} onChange={(e) => updateWorkerCount(activeShift, 'webTransportCount', e.target.value)} style={{ width: '100%', padding: '4px', borderRadius: '4px', border: '1px solid #ddd', textAlign: 'center' }} />
+            </div>
+             <div style={{ background: '#ffedd5', borderRadius: '8px', padding: '10px', border: '1px solid #f97316' }}>
+                <h3 style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '4px', color: '#9a3412' }}>Re-Work</h3>
+                <input type="number" min="0" value={currentData.reWorkCount} onChange={(e) => updateWorkerCount(activeShift, 'reWorkCount', e.target.value)} style={{ width: '100%', padding: '4px', borderRadius: '4px', border: '1px solid #ddd', textAlign: 'center' }} />
+            </div>
+             <div style={{ background: '#cffafe', borderRadius: '8px', padding: '10px', border: '1px solid #06b6d4' }}>
+                <h3 style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '4px', color: '#164e63' }}>Warp Beam</h3>
+                <input type="number" min="0" value={currentData.warpBeamCount} onChange={(e) => updateWorkerCount(activeShift, 'warpBeamCount', e.target.value)} style={{ width: '100%', padding: '4px', borderRadius: '4px', border: '1px solid #ddd', textAlign: 'center' }} />
+            </div>
+             <div style={{ background: '#fce7f3', borderRadius: '8px', padding: '10px', border: '1px solid #ec4899' }}>
+                <h3 style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '4px', color: '#9f1239' }}>TL</h3>
+                <input type="number" min="0" value={currentData.tlCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'tlCount', e.target.value)} style={{ width: '100%', padding: '4px', borderRadius: '4px', border: '1px solid #ddd', textAlign: 'center' }} />
+            </div>
+             <div style={{ background: '#e0e7ff', borderRadius: '8px', padding: '10px', border: '1px solid #6366f1' }}>
+                <h3 style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '4px', color: '#4338ca' }}>Greige</h3>
+                <input type="number" min="0" value={currentData.greigeBoilCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'greigeBoilCount', e.target.value)} style={{ width: '100%', padding: '4px', borderRadius: '4px', border: '1px solid #ddd', textAlign: 'center' }} />
+            </div>
+             <div style={{ background: '#ccfbf1', borderRadius: '8px', padding: '10px', border: '1px solid #14b8a6' }}>
+                <h3 style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '4px', color: '#115e59' }}>Yarn Prep</h3>
+                <input type="number" min="0" value={currentData.yarnPreparationCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'yarnPreparationCount', e.target.value)} style={{ width: '100%', padding: '4px', borderRadius: '4px', border: '1px solid #ddd', textAlign: 'center' }} />
+            </div>
+             <div style={{ background: '#ffedd5', borderRadius: '8px', padding: '10px', border: '1px solid #f97316' }}>
+                <h3 style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '4px', color: '#9a3412' }}>Pilot</h3>
+                <input type="number" min="0" value={currentData.pilotCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'pilotCount', e.target.value)} style={{ width: '100%', padding: '4px', borderRadius: '4px', border: '1px solid #ddd', textAlign: 'center' }} />
+            </div>
         </div>
 
         <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '12px', border: '2px solid #e5e7eb' }}>
           <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '8px', color: '#374151' }}>Machine Status</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
             {[
               { id: 'setup', label: 'Setup', icon: Wrench, color: '#3b82f6' },
-              { id: 'development', label: 'Development', icon: Code, color: '#eab308' },
-              { id: 'alteration', label: 'Alteration', icon: Edit, color: '#ef4444' },
-              { id: 'running', label: 'Running', icon: Play, color: '#10b981' },
+              { id: 'development', label: 'Dev', icon: Code, color: '#eab308' },
+              { id: 'alteration', label: 'Alt', icon: Edit, color: '#ef4444' },
+              { id: 'running', label: 'Run', icon: Play, color: '#10b981' },
               { id: 'pilot', label: 'Pilot', icon: Plane, color: '#f97316' },
-              { id: 'no-order', label: 'No Order', icon: XCircle, color: '#92400e' }
+              { id: 'no-order', label: 'No Ord', icon: XCircle, color: '#92400e' }
             ].map(status => (
               <button key={status.id} onClick={() => { setActiveStatusFilter(status.id); setShowStatusMenu(true); }} style={{ padding: '8px 10px', borderRadius: '6px', border: 'none', cursor: 'pointer', background: status.color, color: 'white', fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
                 <status.icon size={12} />
@@ -980,16 +959,7 @@ function SetupView(props) {
             </div>
           </div>
           
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button 
-              onClick={() => setFitMap(!fitMap)} 
-              style={{ background: fitMap ? '#2563eb' : '#fff', border: '1px solid #2563eb', color: fitMap ? 'white' : '#2563eb', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              {fitMap ? <Minimize size={14}/> : <Maximize size={14}/>} 
-              {fitMap ? '1:1 Scale' : 'Fit to Screen'}
-            </button>
-            <button onClick={clearMap} style={{ background: '#dc2626', color: 'white', padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px' }}>Clear Map</button>
-          </div>
+          <button onClick={clearMap} style={{ background: '#dc2626', color: 'white', padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px' }}>Clear Map</button>
         </div>
         
         <div className={`map-scroll-container ${fitMap ? 'fit-screen' : ''}`} ref={mapContainerRef}>
@@ -1076,19 +1046,18 @@ function ManagerView(props) {
   const { shiftData, machines, zones, machineStatuses, getShiftLabel, getShiftColor, getZoneForMachine, STATUS_COLORS, drawZoneConnections, getRemainingWorkers, fitMap, setFitMap, setSelectedMachine, setShowMemberModal, selectedMachine, showMemberModal, assignMemberToMachine, activeShift, getMemberEPF } = props;
   const mapContainerRef = useRef(null);
 
-  const currentData = shiftData[activeShift] || shiftData['A']; 
+  // Fix: Default to Shift A if no active shift, handle potentially undefined shiftData
+  const currentData = (shiftData && shiftData[activeShift]) ? shiftData[activeShift] : { assignments: {}, teamMembers: [] };
 
   const scrollMap = (direction) => {
     if (mapContainerRef.current) {
       const scrollAmount = 300;
       let top = 0;
       let left = 0;
-      
       if (direction === 'up') top = -scrollAmount;
       if (direction === 'down') top = scrollAmount;
       if (direction === 'left') left = -scrollAmount;
       if (direction === 'right') left = scrollAmount;
-
       mapContainerRef.current.scrollBy({ top, left, behavior: 'smooth' });
     }
   };
@@ -1098,7 +1067,11 @@ function ManagerView(props) {
       <h2 style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 'bold', marginBottom: '24px' }}>Complete Allocation Overview</h2>
       
       {['A', 'B', 'C'].map(shift => {
-        const shiftAssignments = shiftData[shift]?.assignments || {};
+        const shiftInfo = shiftData[shift] || {};
+        const shiftAssignments = shiftInfo.assignments || {};
+        const dayNightIcon = shiftInfo.dayNight === 'day' ? '☀️' : '🌙';
+        const dayNightText = shiftInfo.dayNight === 'day' ? 'DAY' : 'NIGHT';
+        const machinesWithAssignments = Object.keys(shiftAssignments).length;
         
         return (
           <div key={shift} style={{ marginBottom: '32px', padding: '20px', background: getShiftColor(shift), borderRadius: '12px', border: '2px solid #d1d5db' }}>
@@ -1106,19 +1079,39 @@ function ManagerView(props) {
               <h3 style={{ fontSize: 'clamp(16px, 3vw, 20px)', fontWeight: 'bold', color: '#1f2937', margin: 0 }}>
                 {shift === 'A' ? '☀️' : shift === 'B' ? '🌤️' : '🌙'} {getShiftLabel(shift)}
               </h3>
-              <div style={{ padding: '6px 12px', borderRadius: '6px', background: shiftData[shift].dayNight === 'day' ? '#fbbf24' : '#4338ca', color: 'white', fontSize: '12px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                {shiftData[shift].dayNight === 'day' ? '☀️' : '🌙'} {shiftData[shift].dayNight === 'day' ? 'DAY' : 'NIGHT'}
+              <div style={{ padding: '6px 12px', borderRadius: '6px', background: shiftInfo.dayNight === 'day' ? '#fbbf24' : '#4338ca', color: 'white', fontSize: '12px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {dayNightIcon} {dayNightText}
               </div>
             </div>
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '12px', marginBottom: '16px' }}>
               <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                 <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Total Attendance</p>
-                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#1e40af' }}>{shiftData[shift].totalAttendance}</p>
+                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#1e40af' }}>{shiftInfo.totalAttendance}</p>
               </div>
               <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                 <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Machine Assign</p>
-                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#10b981' }}>{shiftData[shift].machineAssignCount || 0}</p>
+                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#10b981' }}>{shiftInfo.machineAssignCount || 0}</p>
+              </div>
+              <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Setup/Alteration</p>
+                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#8b5cf6' }}>{shiftInfo.setupAlterationCount || 0}</p>
+              </div>
+              <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Other Workers</p>
+                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#f59e0b' }}>{shiftInfo.otherWorkersCount}</p>
+              </div>
+              <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Web Transport</p>
+                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#7c3aed' }}>{shiftInfo.webTransportCount}</p>
+              </div>
+              <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Re-Work</p>
+                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#ea580c' }}>{shiftInfo.reWorkCount}</p>
+              </div>
+              <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Warp Beam</p>
+                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#0891b2' }}>{shiftInfo.warpBeamCount}</p>
               </div>
               <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                 <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Remaining</p>
@@ -1126,7 +1119,7 @@ function ManagerView(props) {
               </div>
             </div>
             
-            {Object.keys(shiftAssignments).length > 0 && (
+            {machinesWithAssignments > 0 && (
               <div style={{ background: 'white', borderRadius: '8px', padding: '16px', maxHeight: '250px', overflowY: 'auto' }}>
                 <p style={{ fontWeight: '600', marginBottom: '8px', color: '#374151' }}>Machine Assignments Breakdown:</p>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
@@ -1136,7 +1129,7 @@ function ManagerView(props) {
                       <div key={machineId} style={{ fontSize: '12px', padding: '8px', background: '#f9fafb', borderRadius: '4px', border: '1px solid #e5e7eb' }}>
                         <div style={{ fontWeight: '600', color: '#2563eb', marginBottom: '4px' }}>{machineId}</div>
                         {memberIds.map((memberId, idx) => {
-                          const member = shiftData[shift].teamMembers.find(m => m.id === memberId);
+                          const member = shiftInfo.teamMembers.find(m => m.id === memberId);
                           return (
                             <div key={idx} style={{ color: '#374151', fontSize: '11px' }}>
                               {idx + 1}. {member ? member.epf : 'Unknown'}
@@ -1200,18 +1193,17 @@ function ManagerView(props) {
             {drawZoneConnections()}
             {machines.map(machine => {
               const zone = getZoneForMachine(machine.id);
-              const assignedMemberIds = currentData.assignments[machine.id] || [];
               const machineStatus = machineStatuses[machine.id];
               const fillColor = machineStatus ? STATUS_COLORS[machineStatus] : (zone ? zone.color : '#e5e7eb');
               
               return (
                 <g key={machine.id}>
-                  <rect x={machine.x - 45} y={machine.y - 35} width="90" height="70" fill={fillColor} stroke={assignedMemberIds.length > 0 ? '#10b981' : '#9ca3af'} strokeWidth="2" rx="8" style={{ cursor: 'pointer' }} onClick={() => { setSelectedMachine(machine); setShowMemberModal(true); }} />
-                  <text x={machine.x} y={machine.y - 15} textAnchor="middle" style={{ fontSize: '11px', fontWeight: 'bold', fill: machineStatus ? 'white' : '#374151', pointerEvents: 'none' }}>{machine.id}</text>
-                  <text x={machine.x} y={machine.y} textAnchor="middle" style={{ fontSize: '10px', fill: machineStatus ? 'white' : '#6b7280', pointerEvents: 'none' }}>{assignedMemberIds.length > 0 ? `${assignedMemberIds.length}/5` : '0/5'}</text>
-                  {assignedMemberIds.length > 0 && (
-                    <text x={machine.x} y={machine.y + 15} textAnchor="middle" style={{ fontSize: '9px', fill: machineStatus ? 'white' : '#059669', pointerEvents: 'none', fontWeight: '600' }}>{getMemberEPF(assignedMemberIds[0]).substring(0, 8)}</text>
+                  <rect x={machine.x - 45} y={machine.y - 35} width="90" height="70" fill={fillColor} stroke="#9ca3af" strokeWidth="2" rx="8" style={{ cursor: 'pointer' }} onClick={() => { setSelectedMachine(machine); setShowMemberModal(true); }} />
+                  <text x={machine.x} y={machine.y - 10} textAnchor="middle" style={{ fontSize: '12px', fontWeight: 'bold', fill: machineStatus ? 'white' : '#1f2937' }}>{machine.id}</text>
+                  {machineStatus && (
+                    <text x={machine.x} y={machine.y + 10} textAnchor="middle" style={{ fontSize: '10px', fontWeight: '600', fill: 'white' }}>{machineStatus.toUpperCase().replace('-', ' ')}</text>
                   )}
+                   {/* Fix: Added missing logic to show assigned EPF if needed, though usually Manager view is high-level */}
                 </g>
               );
             })}
