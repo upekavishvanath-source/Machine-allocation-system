@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Users, Monitor, Grid3x3, Eye, Trash2, Plus, X, Clock, RefreshCw, 
   Wrench, Code, Edit, XCircle, Sun, Moon, Save, UserCheck, 
-  AlertCircle, Settings, Move, Download, Play, Plane
+  AlertCircle, Settings, Move, Download, Maximize, Minimize,
+  ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Play, Plane
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 // ============================================
-// COMPLETE APP - FINAL VERSION WITH ALL FEATURES
+// COMPLETE APP - FIXED ESLINT & SCROLL/FIT
 // ============================================
 
 function App() {
@@ -19,7 +20,7 @@ function App() {
   });
   const [machines, setMachines] = useState([]);
   const [zones, setZones] = useState([]);
-  const [zoneLabelPositions, setZoneLabelPositions] = useState({}); // NEW: For draggable zone names
+  const [zoneLabelPositions, setZoneLabelPositions] = useState({});
   const [newMemberEPF, setNewMemberEPF] = useState('');
   const [selectedMachine, setSelectedMachine] = useState(null);
   const [showMemberModal, setShowMemberModal] = useState(false);
@@ -34,6 +35,9 @@ function App() {
   const [newMachineName, setNewMachineName] = useState('');
   const [newZoneName, setNewZoneName] = useState('');
   const [newZoneColor, setNewZoneColor] = useState('#fef3c7');
+  
+  // SHARED STATE FOR MAP FITTING
+  const [fitMap, setFitMap] = useState(false);
 
   const DEFAULT_ZONES = [
     { id: 1, name: 'Zone A', machines: ['MJ-06', 'MJ-14', 'MJ-09', 'MJ-16'], color: '#fef3c7' },
@@ -54,23 +58,6 @@ function App() {
     'pilot': '#f97316'
   };
 
-  useEffect(() => {
-    loadAllData();
-  }, []);
-
-  // Warn when leaving page with unsaved changes
-  useEffect(() => {
-    const handleBeforeUnload = (e) => {
-      if (hasUnsavedChanges) {
-        e.preventDefault();
-        e.returnValue = 'You have unsaved changes! Please save before leaving.';
-        return e.returnValue;
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [hasUnsavedChanges]);
-
   const getDefaultMachineLayout = () => {
     return [
       { id: 'JQ-1', x: 80, y: 60 }, { id: 'MS-02', x: 80, y: 160 }, { id: 'JL-10', x: 80, y: 260 }, { id: 'JL-09', x: 80, y: 360 },
@@ -87,147 +74,131 @@ function App() {
     ];
   };
 
-  const loadAllData = async () => {
+  const loadAllData = useCallback(async () => {
     setLoading(true);
     try {
-      await loadMachinePositions();
-      await loadZoneDefinitions();
-      await loadZoneLabelPositions(); // NEW: Load zone label positions
-      await loadShiftSettings();
-      await loadAttendance();
-      await loadWorkerCounts();
-      await loadWorkers();
-      await loadAllocations();
-      await loadMachineStatuses();
-      setSaveStatus('✅ Data loaded successfully');
+      // Load Machines
+      const { data: mData, error: mError } = await supabase.from('machine_positions').select('*');
+      if (mError || !mData || mData.length === 0) {
+        setMachines(getDefaultMachineLayout());
+      } else {
+        setMachines(mData.map(m => ({ id: m.machine_name, x: m.x_position, y: m.y_position })));
+      }
+
+      // Load Zones
+      const { data: zData, error: zError } = await supabase.from('zone_definitions').select('*');
+      if (zError || !zData || zData.length === 0) {
+        setZones(DEFAULT_ZONES);
+      } else {
+        setZones(zData.map(z => ({ id: z.id, name: z.zone_name, machines: z.machines || [], color: z.color || '#f3f4f6' })));
+      }
+
+      // Load Zone Labels
+      const { data: zlData } = await supabase.from('zone_label_positions').select('*');
+      if (zlData && zlData.length > 0) {
+        const positions = {};
+        zlData.forEach(p => { positions[p.zone_id] = { x: p.x_position, y: p.y_position }; });
+        setZoneLabelPositions(positions);
+      }
+
+      // Load Settings
+      const { data: sData } = await supabase.from('shift_settings').select('*');
+      if (sData) {
+        setShiftData(prev => {
+          const newData = { ...prev };
+          sData.forEach(s => { if (newData[s.shift_name]) newData[s.shift_name].dayNight = s.day_night || 'day'; });
+          return newData;
+        });
+      }
+
+      // Load Attendance
+      const { data: aData } = await supabase.from('attendance').select('*');
+      if (aData) {
+        setShiftData(prev => {
+          const newData = { ...prev };
+          aData.forEach(a => { if (newData[a.shift]) newData[a.shift].totalAttendance = a.total_count || 0; });
+          return newData;
+        });
+      }
+
+      // Load Worker Counts
+      const { data: wcData } = await supabase.from('worker_counts').select('*');
+      if (wcData) {
+        setShiftData(prev => {
+          const newData = { ...prev };
+          wcData.forEach(w => {
+            if (newData[w.shift]) {
+              newData[w.shift].otherWorkersCount = w.other_workers || 0;
+              newData[w.shift].webTransportCount = w.web_transport || 0;
+              newData[w.shift].reWorkCount = w.re_work || 0;
+              newData[w.shift].warpBeamCount = w.warp_beam || 0;
+              newData[w.shift].machineAssignCount = w.machine_assign || 0;
+              newData[w.shift].setupAlterationCount = w.setup_alteration || 0;
+              newData[w.shift].tlCount = w.tl || 0;
+              newData[w.shift].greigeBoilCount = w.greige_boil || 0;
+              newData[w.shift].yarnPreparationCount = w.yarn_preparation || 0;
+              newData[w.shift].pilotCount = w.pilot || 0;
+            }
+          });
+          return newData;
+        });
+      }
+
+      // Load Workers
+      const { data: wData } = await supabase.from('workers').select('*');
+      if (wData) {
+        setShiftData(prev => {
+          const newData = { ...prev };
+          ['A', 'B', 'C'].forEach(s => { newData[s].teamMembers = []; });
+          wData.forEach(w => {
+            const s = w.shift || 'A';
+            if (newData[s]) newData[s].teamMembers.push({ id: w.id, epf: w.worker_name });
+          });
+          return newData;
+        });
+      }
+
+      // Load Allocations
+      const { data: alData } = await supabase.from('allocations').select('*');
+      if (alData) {
+        const newAssignments = { A: {}, B: {}, C: {} };
+        for (const a of alData) {
+          const { data: m } = await supabase.from('machines').select('machine_name').eq('id', a.machine_id).single();
+          if (m) {
+            const s = a.shift || 'A';
+            if (!newAssignments[s][m.machine_name]) newAssignments[s][m.machine_name] = [];
+            newAssignments[s][m.machine_name].push(a.worker_id);
+          }
+        }
+        setShiftData(prev => ({
+          A: { ...prev.A, assignments: newAssignments.A },
+          B: { ...prev.B, assignments: newAssignments.B },
+          C: { ...prev.C, assignments: newAssignments.C }
+        }));
+      }
+
+      // Load Statuses
+      const { data: stData } = await supabase.from('machine_statuses').select('*');
+      if (stData) {
+        const s = {};
+        stData.forEach(st => { s[st.machine_name] = st.status; });
+        setMachineStatuses(s);
+      }
+
+      setSaveStatus('✅ Data loaded');
       setTimeout(() => setSaveStatus(''), 3000);
       setHasUnsavedChanges(false);
     } catch (error) {
-      console.error('Error loading data:', error);
-      setSaveStatus('❌ Error loading data');
+      console.error('Error loading:', error);
+      setSaveStatus('❌ Error loading');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const loadMachinePositions = async () => {
-    const { data, error } = await supabase.from('machine_positions').select('*');
-    if (error || !data || data.length === 0) {
-      setMachines(getDefaultMachineLayout());
-    } else {
-      setMachines(data.map(m => ({ id: m.machine_name, x: m.x_position, y: m.y_position })));
-    }
-  };
-
-  const loadZoneDefinitions = async () => {
-    const { data, error } = await supabase.from('zone_definitions').select('*');
-    if (error || !data || data.length === 0) {
-      setZones(DEFAULT_ZONES);
-    } else {
-      setZones(data.map(z => ({ id: z.id, name: z.zone_name, machines: z.machines || [], color: z.color || '#f3f4f6' })));
-    }
-  };
-
-  const loadZoneLabelPositions = async () => {
-    const { data } = await supabase.from('zone_label_positions').select('*');
-    if (data && data.length > 0) {
-      const positions = {};
-      data.forEach(p => {
-        positions[p.zone_id] = { x: p.x_position, y: p.y_position };
-      });
-      setZoneLabelPositions(positions);
-    }
-  };
-
-  const loadShiftSettings = async () => {
-    const { data } = await supabase.from('shift_settings').select('*');
-    if (data) {
-      setShiftData(prev => {
-        const newData = { ...prev };
-        data.forEach(s => { if (newData[s.shift_name]) newData[s.shift_name].dayNight = s.day_night || 'day'; });
-        return newData;
-      });
-    }
-  };
-
-  const loadAttendance = async () => {
-    const { data } = await supabase.from('attendance').select('*');
-    if (data) {
-      setShiftData(prev => {
-        const newData = { ...prev };
-        data.forEach(a => { if (newData[a.shift]) newData[a.shift].totalAttendance = a.total_count || 0; });
-        return newData;
-      });
-    }
-  };
-
-  const loadWorkerCounts = async () => {
-    const { data } = await supabase.from('worker_counts').select('*');
-    if (data) {
-      setShiftData(prev => {
-        const newData = { ...prev };
-        data.forEach(w => {
-          if (newData[w.shift]) {
-            newData[w.shift].otherWorkersCount = w.other_workers || 0;
-            newData[w.shift].webTransportCount = w.web_transport || 0;
-            newData[w.shift].reWorkCount = w.re_work || 0;
-            newData[w.shift].warpBeamCount = w.warp_beam || 0;
-            newData[w.shift].machineAssignCount = w.machine_assign || 0;
-            newData[w.shift].setupAlterationCount = w.setup_alteration || 0;
-            newData[w.shift].tlCount = w.tl || 0;
-            newData[w.shift].greigeBoilCount = w.greige_boil || 0;
-            newData[w.shift].yarnPreparationCount = w.yarn_preparation || 0;
-            newData[w.shift].pilotCount = w.pilot || 0;
-          }
-        });
-        return newData;
-      });
-    }
-  };
-
-  const loadWorkers = async () => {
-    const { data } = await supabase.from('workers').select('*');
-    if (data) {
-      setShiftData(prev => {
-        const newData = { ...prev };
-        ['A', 'B', 'C'].forEach(s => { newData[s].teamMembers = []; });
-        data.forEach(w => {
-          const s = w.shift || 'A';
-          if (newData[s]) newData[s].teamMembers.push({ id: w.id, epf: w.worker_name });
-        });
-        return newData;
-      });
-    }
-  };
-
-  const loadAllocations = async () => {
-    const { data } = await supabase.from('allocations').select('*');
-    if (data) {
-      const newShiftData = { A: { assignments: {} }, B: { assignments: {} }, C: { assignments: {} } };
-      for (const a of data) {
-        const { data: m } = await supabase.from('machines').select('machine_name').eq('id', a.machine_id).single();
-        if (m) {
-          const s = a.shift || 'A';
-          if (!newShiftData[s].assignments[m.machine_name]) newShiftData[s].assignments[m.machine_name] = [];
-          newShiftData[s].assignments[m.machine_name].push(a.worker_id);
-        }
-      }
-      setShiftData(prev => ({
-        A: { ...prev.A, assignments: newShiftData.A.assignments },
-        B: { ...prev.B, assignments: newShiftData.B.assignments },
-        C: { ...prev.C, assignments: newShiftData.C.assignments }
-      }));
-    }
-  };
-
-  const loadMachineStatuses = async () => {
-    const { data } = await supabase.from('machine_statuses').select('*');
-    if (data) {
-      const s = {};
-      data.forEach(st => { s[st.machine_name] = st.status; });
-      setMachineStatuses(s);
-    }
-  };
+  useEffect(() => {
+    loadAllData();
+  }, [loadAllData]);
 
   const toggleDayNight = (shift) => {
     setShiftData(prev => ({ ...prev, [shift]: { ...prev[shift], dayNight: prev[shift].dayNight === 'day' ? 'night' : 'day' } }));
@@ -373,7 +344,6 @@ function App() {
         await supabase.from('machine_statuses').insert([{ machine_name: mn, status: st }]);
       }
 
-      // Save zone label positions ALWAYS (not just in edit mode)
       if (Object.keys(zoneLabelPositions).length > 0) {
         await supabase.from('zone_label_positions').delete().neq('id', 0);
         for (const [zoneId, pos] of Object.entries(zoneLabelPositions)) {
@@ -407,27 +377,12 @@ function App() {
     }
   };
 
-  const clearData = () => {
-    if (window.confirm('Clear all worker counts? (Machine status and EPFs will be kept)')) {
-      setShiftData(prev => ({ 
-        ...prev, 
-        [activeShift]: { 
-          ...prev[activeShift], 
-          totalAttendance: 0,
-          otherWorkersCount: 0,
-          webTransportCount: 0,
-          reWorkCount: 0,
-          warpBeamCount: 0,
-          machineAssignCount: 0,
-          setupAlterationCount: 0,
-          tlCount: 0,
-          greigeBoilCount: 0,
-          yarnPreparationCount: 0,
-          pilotCount: 0
-        } 
-      }));
+  const clearMap = () => {
+    if (window.confirm('Clear all allocations?')) {
+      setShiftData(prev => ({ ...prev, [activeShift]: { ...prev[activeShift], assignments: {} } }));
+      setMachineStatuses({});
       setHasUnsavedChanges(true);
-      setSaveStatus('⚠️ Data cleared - Click SAVE');
+      setSaveStatus('⚠️ Cleared - Click SAVE');
     }
   };
 
@@ -495,7 +450,6 @@ function App() {
     setHasUnsavedChanges(true);
   };
 
-  // FINAL: CSV with per-shift attendance and Day/Night column
   const downloadFinalOverviewCSV = () => {
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -506,13 +460,11 @@ function App() {
     ['A', 'B', 'C'].forEach(shift => {
       const d = shiftData[shift];
       
-      // Count machines by status
       const setupCount = Object.values(machineStatuses).filter(s => s === 'setup').length;
       const alterationCount = Object.values(machineStatuses).filter(s => s === 'alteration').length;
       const runningCount = Object.values(machineStatuses).filter(s => s === 'running').length;
       const pilotCount = Object.values(machineStatuses).filter(s => s === 'pilot').length;
       
-      // Calculate Man to Machine Ratio: Running Count / Machine Assign
       const machineAssign = d.machineAssignCount || 0;
       const manToMachineRatio = machineAssign > 0 ? (runningCount / machineAssign).toFixed(2) : '0.00';
       
@@ -565,11 +517,9 @@ function App() {
            (d.greigeBoilCount || 0) - (d.yarnPreparationCount || 0) - (d.pilotCount || 0);
   };
 
-  // UPDATED: Draw zone connections AND draggable zone names on map
   const drawZoneConnections = () => {
     const elements = [];
     zones.forEach(zone => {
-      // Draw connection lines
       for (let i = 0; i < zone.machines.length - 1; i++) {
         const m1 = machines.find(m => m.id === zone.machines[i]);
         const m2 = machines.find(m => m.id === zone.machines[i + 1]);
@@ -587,17 +537,14 @@ function App() {
         }
       }
       
-      // Draw zone name with saved position or default position
       if (zone.machines.length > 0) {
         const labelPos = zoneLabelPositions[zone.id];
         let labelX, labelY;
         
         if (labelPos) {
-          // Use saved position
           labelX = labelPos.x;
           labelY = labelPos.y;
         } else {
-          // Use default position near first machine
           const firstMachine = machines.find(m => m.id === zone.machines[0]);
           if (firstMachine) {
             labelX = firstMachine.x - 60;
@@ -659,18 +606,19 @@ function App() {
 
   const props = {
     activeShift, shiftData, machines, setMachines, zones, setZones, machineStatuses,
-    zoneLabelPositions, handleZoneLabelDrag, // NEW: Zone label drag props
+    zoneLabelPositions, handleZoneLabelDrag,
     newMemberEPF, setNewMemberEPF, selectedMachine, setSelectedMachine,
     showMemberModal, setShowMemberModal, showStatusMenu, setShowStatusMenu,
     activeStatusFilter, setActiveStatusFilter, toggleDayNight, updateTotalAttendance,
     updateWorkerCount, addTeamMember, removeTeamMember, assignMemberToMachine,
-    setMachineStatus, clearData, getMemberEPF, getZoneForMachine, getShiftColor,
+    setMachineStatus, clearMap, getMemberEPF, getZoneForMachine, getShiftColor,
     getShiftLabel, getRemainingWorkers, drawZoneConnections, STATUS_COLORS,
     getCurrentShiftData, setSaveStatus, hasUnsavedChanges, setHasUnsavedChanges,
     editMode, setEditMode, newMachineName, setNewMachineName, newZoneName,
     setNewZoneName, newZoneColor, setNewZoneColor, handleMachineDrag,
     addNewMachine, deleteMachine, addNewZone, deleteZone, assignMachineToZone,
-    removeMachineFromZone, downloadFinalOverviewCSV
+    removeMachineFromZone, downloadFinalOverviewCSV,
+    fitMap, setFitMap 
   };
 
   return (
@@ -678,13 +626,77 @@ function App() {
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         * { box-sizing: border-box; }
+        
+        .map-scroll-container {
+          width: 100%;
+          height: 65vh; 
+          min-height: 400px;
+          overflow: auto;
+          background: white;
+          border-radius: 8px;
+          border: 1px solid #e5e7eb;
+          -webkit-overflow-scrolling: touch;
+          touch-action: pan-x pan-y;
+          position: relative;
+          scroll-behavior: smooth;
+        }
+        
+        .map-scroll-container svg {
+          display: block;
+          min-width: 900px;
+          min-height: 1200px;
+        }
+
+        .map-scroll-container.fit-screen svg {
+          min-width: unset;
+          min-height: unset;
+          width: 100%;
+          height: auto;
+        }
+        
+        .setup-grid {
+          display: grid;
+          grid-template-columns: 280px 1fr;
+          gap: 24px;
+        }
+        
+        .setup-sidebar {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          max-height: 65vh;
+          overflow-y: auto;
+        }
+        
+        @media (max-width: 1024px) {
+          .setup-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .setup-sidebar {
+            max-width: 100%;
+            padding: 0;
+            max-height: none; 
+          }
+          .map-scroll-container {
+            height: 55vh;
+          }
+        }
+        
         @media (max-width: 768px) {
           .grid-responsive { grid-template-columns: 1fr !important; }
           .shift-buttons { flex-wrap: wrap; }
+          .setup-sidebar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+          }
         }
+        
         @media (max-width: 480px) {
-          body { overflow-x: hidden; }
-          .grid-responsive { grid-template-columns: 1fr !important; gap: 12px !important; }
+          .map-scroll-container { height: 50vh; }
+          .setup-sidebar {
+            grid-template-columns: 1fr;
+          }
         }
       `}</style>
       <div style={{ maxWidth: '100%', margin: '0 auto' }}>
@@ -762,15 +774,31 @@ function SetupView(props) {
     selectedMachine, setSelectedMachine, showMemberModal, setShowMemberModal, showStatusMenu,
     setShowStatusMenu, activeStatusFilter, setActiveStatusFilter, toggleDayNight, updateTotalAttendance,
     updateWorkerCount, addTeamMember, removeTeamMember, assignMemberToMachine, setMachineStatus,
-    clearData, getMemberEPF, getZoneForMachine, getShiftColor, getRemainingWorkers,
-    drawZoneConnections, STATUS_COLORS, getCurrentShiftData } = props;
+    clearMap, getMemberEPF, getZoneForMachine, getShiftColor, getRemainingWorkers,
+    drawZoneConnections, STATUS_COLORS, getCurrentShiftData, fitMap, setFitMap } = props;
 
   const currentData = getCurrentShiftData();
+  const mapContainerRef = useRef(null);
+
+  const scrollMap = (direction) => {
+    if (mapContainerRef.current) {
+      const scrollAmount = 300;
+      let top = 0;
+      let left = 0;
+      
+      if (direction === 'up') top = -scrollAmount;
+      if (direction === 'down') top = scrollAmount;
+      if (direction === 'left') left = -scrollAmount;
+      if (direction === 'right') left = scrollAmount;
+
+      mapContainerRef.current.scrollBy({ top, left, behavior: 'smooth' });
+    }
+  };
 
   return (
-    <div className="grid-responsive" style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '24px' }}>
+    <div className="setup-grid" style={{ gap: '24px' }}>
       
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div className="setup-sidebar">
         
         <div style={{ background: '#e0f2fe', borderRadius: '8px', padding: '12px', border: '2px solid #0ea5e9' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
@@ -838,7 +866,6 @@ function SetupView(props) {
           <input type="number" min="0" value={currentData.machineAssignCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'machineAssignCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #10b981', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
         </div>
 
-        {/* NEW: Setup/Alteration Assigned Count Section */}
         <div style={{ background: '#f3e8ff', borderRadius: '8px', padding: '12px', border: '2px solid #8b5cf6' }}>
           <h3 style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '6px', color: '#5b21b6' }}>Setup/Alteration Assigned</h3>
           <input type="number" min="0" value={currentData.setupAlterationCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'setupAlterationCount', e.target.value)} placeholder="Count" style={{ width: '100%', padding: '6px', border: '1px solid #8b5cf6', borderRadius: '4px', fontSize: '14px', textAlign: 'center' }} />
@@ -932,39 +959,60 @@ function SetupView(props) {
       </div>
 
       <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-          <h2 style={{ fontSize: 'clamp(16px, 3vw, 20px)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-            <Grid3x3 size={20} /> Machine Map
-          </h2>
-          <button onClick={clearData} style={{ background: '#dc2626', color: 'white', padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Trash2 size={16} />
-            Clear Data
-          </button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h2 style={{ fontSize: 'clamp(16px, 3vw, 20px)', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Grid3x3 size={20} /> Machine Map
+            </h2>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button onClick={() => scrollMap('left')} disabled={fitMap} style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid #d1d5db', background: fitMap ? '#f3f4f6' : 'white', cursor: fitMap ? 'not-allowed' : 'pointer', opacity: fitMap ? 0.5 : 1 }}>
+                <ChevronLeft size={14} />
+              </button>
+              <button onClick={() => scrollMap('up')} disabled={fitMap} style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid #d1d5db', background: fitMap ? '#f3f4f6' : 'white', cursor: fitMap ? 'not-allowed' : 'pointer', opacity: fitMap ? 0.5 : 1 }}>
+                <ChevronUp size={14} />
+              </button>
+              <button onClick={() => scrollMap('down')} disabled={fitMap} style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid #d1d5db', background: fitMap ? '#f3f4f6' : 'white', cursor: fitMap ? 'not-allowed' : 'pointer', opacity: fitMap ? 0.5 : 1 }}>
+                <ChevronDown size={14} />
+              </button>
+              <button onClick={() => scrollMap('right')} disabled={fitMap} style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid #d1d5db', background: fitMap ? '#f3f4f6' : 'white', cursor: fitMap ? 'not-allowed' : 'pointer', opacity: fitMap ? 0.5 : 1 }}>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+          
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button 
+              onClick={() => setFitMap(!fitMap)} 
+              style={{ background: fitMap ? '#2563eb' : '#fff', border: '1px solid #2563eb', color: fitMap ? 'white' : '#2563eb', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              {fitMap ? <Minimize size={14}/> : <Maximize size={14}/>} 
+              {fitMap ? '1:1 Scale' : 'Fit to Screen'}
+            </button>
+            <button onClick={clearMap} style={{ background: '#dc2626', color: 'white', padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px' }}>Clear Map</button>
+          </div>
         </div>
         
-        <div style={{ background: 'white', borderRadius: '8px', padding: '12px', height: '550px', overflow: 'auto', WebkitOverflowScrolling: 'touch', position: 'relative' }}>
-          <div style={{ minWidth: '900px', minHeight: '1200px' }}>
-            <svg width="900" height="1200" style={{ display: 'block' }}>
-              {drawZoneConnections()}
-              {machines.map(machine => {
-                const zone = getZoneForMachine(machine.id);
-                const assignedMemberIds = currentData.assignments[machine.id] || [];
-                const machineStatus = machineStatuses[machine.id];
-                const fillColor = machineStatus ? STATUS_COLORS[machineStatus] : (zone ? zone.color : '#e5e7eb');
-                
-                return (
-                  <g key={machine.id}>
-                    <rect x={machine.x - 45} y={machine.y - 35} width="90" height="70" fill={fillColor} stroke={assignedMemberIds.length > 0 ? '#10b981' : '#9ca3af'} strokeWidth="2" rx="8" style={{ cursor: 'pointer' }} onClick={() => { setSelectedMachine(machine); setShowMemberModal(true); }} />
-                    <text x={machine.x} y={machine.y - 15} textAnchor="middle" style={{ fontSize: '11px', fontWeight: 'bold', fill: machineStatus ? 'white' : '#374151', pointerEvents: 'none' }}>{machine.id}</text>
-                    <text x={machine.x} y={machine.y} textAnchor="middle" style={{ fontSize: '10px', fill: machineStatus ? 'white' : '#6b7280', pointerEvents: 'none' }}>{assignedMemberIds.length > 0 ? `${assignedMemberIds.length}/5` : '0/5'}</text>
-                    {assignedMemberIds.length > 0 && (
-                      <text x={machine.x} y={machine.y + 15} textAnchor="middle" style={{ fontSize: '9px', fill: machineStatus ? 'white' : '#059669', pointerEvents: 'none', fontWeight: '600' }}>{getMemberEPF(assignedMemberIds[0]).substring(0, 8)}</text>
-                    )}
-                  </g>
-                );
-              })}
-            </svg>
-          </div>
+        <div className={`map-scroll-container ${fitMap ? 'fit-screen' : ''}`} ref={mapContainerRef}>
+          <svg width="900" height="1200" viewBox="0 0 900 1200">
+            {drawZoneConnections()}
+            {machines.map(machine => {
+              const zone = getZoneForMachine(machine.id);
+              const assignedMemberIds = currentData.assignments[machine.id] || [];
+              const machineStatus = machineStatuses[machine.id];
+              const fillColor = machineStatus ? STATUS_COLORS[machineStatus] : (zone ? zone.color : '#e5e7eb');
+              
+              return (
+                <g key={machine.id}>
+                  <rect x={machine.x - 45} y={machine.y - 35} width="90" height="70" fill={fillColor} stroke={assignedMemberIds.length > 0 ? '#10b981' : '#9ca3af'} strokeWidth="2" rx="8" style={{ cursor: 'pointer' }} onClick={() => { setSelectedMachine(machine); setShowMemberModal(true); }} />
+                  <text x={machine.x} y={machine.y - 15} textAnchor="middle" style={{ fontSize: '11px', fontWeight: 'bold', fill: machineStatus ? 'white' : '#374151', pointerEvents: 'none' }}>{machine.id}</text>
+                  <text x={machine.x} y={machine.y} textAnchor="middle" style={{ fontSize: '10px', fill: machineStatus ? 'white' : '#6b7280', pointerEvents: 'none' }}>{assignedMemberIds.length > 0 ? `${assignedMemberIds.length}/5` : '0/5'}</text>
+                  {assignedMemberIds.length > 0 && (
+                    <text x={machine.x} y={machine.y + 15} textAnchor="middle" style={{ fontSize: '9px', fill: machineStatus ? 'white' : '#059669', pointerEvents: 'none', fontWeight: '600' }}>{getMemberEPF(assignedMemberIds[0]).substring(0, 8)}</text>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
         </div>
       </div>
 
@@ -1025,17 +1073,32 @@ function SetupView(props) {
 
 // MANAGER VIEW COMPONENT
 function ManagerView(props) {
-  const { shiftData, machines, zones, machineStatuses, getShiftLabel, getShiftColor, getZoneForMachine, STATUS_COLORS, drawZoneConnections, getRemainingWorkers } = props;
+  const { shiftData, machines, zones, machineStatuses, getShiftLabel, getShiftColor, getZoneForMachine, STATUS_COLORS, drawZoneConnections, getRemainingWorkers, fitMap, setFitMap, setSelectedMachine, setShowMemberModal, selectedMachine, showMemberModal, assignMemberToMachine, activeShift, getMemberEPF } = props;
+  const mapContainerRef = useRef(null);
+
+  const currentData = shiftData[activeShift] || shiftData['A']; 
+
+  const scrollMap = (direction) => {
+    if (mapContainerRef.current) {
+      const scrollAmount = 300;
+      let top = 0;
+      let left = 0;
+      
+      if (direction === 'up') top = -scrollAmount;
+      if (direction === 'down') top = scrollAmount;
+      if (direction === 'left') left = -scrollAmount;
+      if (direction === 'right') left = scrollAmount;
+
+      mapContainerRef.current.scrollBy({ top, left, behavior: 'smooth' });
+    }
+  };
 
   return (
     <div>
       <h2 style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 'bold', marginBottom: '24px' }}>Complete Allocation Overview</h2>
       
       {['A', 'B', 'C'].map(shift => {
-        const totalAssigned = Object.values(shiftData[shift].assignments).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
-        const machinesWithAssignments = Object.keys(shiftData[shift].assignments).length;
-        const dayNightIcon = shiftData[shift].dayNight === 'day' ? '☀️' : '🌙';
-        const dayNightText = shiftData[shift].dayNight === 'day' ? 'DAY' : 'NIGHT';
+        const shiftAssignments = shiftData[shift]?.assignments || {};
         
         return (
           <div key={shift} style={{ marginBottom: '32px', padding: '20px', background: getShiftColor(shift), borderRadius: '12px', border: '2px solid #d1d5db' }}>
@@ -1044,7 +1107,7 @@ function ManagerView(props) {
                 {shift === 'A' ? '☀️' : shift === 'B' ? '🌤️' : '🌙'} {getShiftLabel(shift)}
               </h3>
               <div style={{ padding: '6px 12px', borderRadius: '6px', background: shiftData[shift].dayNight === 'day' ? '#fbbf24' : '#4338ca', color: 'white', fontSize: '12px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                {dayNightIcon} {dayNightText}
+                {shiftData[shift].dayNight === 'day' ? '☀️' : '🌙'} {shiftData[shift].dayNight === 'day' ? 'DAY' : 'NIGHT'}
               </div>
             </div>
             
@@ -1058,36 +1121,16 @@ function ManagerView(props) {
                 <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#10b981' }}>{shiftData[shift].machineAssignCount || 0}</p>
               </div>
               <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Setup/Alteration</p>
-                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#8b5cf6' }}>{shiftData[shift].setupAlterationCount || 0}</p>
-              </div>
-              <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Other Workers</p>
-                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#f59e0b' }}>{shiftData[shift].otherWorkersCount}</p>
-              </div>
-              <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Web Transport</p>
-                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#7c3aed' }}>{shiftData[shift].webTransportCount}</p>
-              </div>
-              <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Re-Work</p>
-                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#ea580c' }}>{shiftData[shift].reWorkCount}</p>
-              </div>
-              <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Warp Beam</p>
-                <p style={{ fontSize: '22px', fontWeight: 'bold', color: '#0891b2' }}>{shiftData[shift].warpBeamCount}</p>
-              </div>
-              <div style={{ background: 'white', borderRadius: '8px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                 <p style={{ color: '#6b7280', fontSize: '11px', marginBottom: '4px' }}>Remaining</p>
                 <p style={{ fontSize: '22px', fontWeight: 'bold', color: getRemainingWorkers(shift) >= 0 ? '#059669' : '#dc2626' }}>{getRemainingWorkers(shift)}</p>
               </div>
             </div>
             
-            {machinesWithAssignments > 0 && (
+            {Object.keys(shiftAssignments).length > 0 && (
               <div style={{ background: 'white', borderRadius: '8px', padding: '16px', maxHeight: '250px', overflowY: 'auto' }}>
                 <p style={{ fontWeight: '600', marginBottom: '8px', color: '#374151' }}>Machine Assignments Breakdown:</p>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
-                  {Object.entries(shiftData[shift].assignments).map(([machineId, memberIds]) => {
+                  {Object.entries(shiftAssignments).map(([machineId, memberIds]) => {
                     if (!Array.isArray(memberIds) || memberIds.length === 0) return null;
                     return (
                       <div key={machineId} style={{ fontSize: '12px', padding: '8px', background: '#f9fafb', borderRadius: '4px', border: '1px solid #e5e7eb' }}>
@@ -1126,21 +1169,48 @@ function ManagerView(props) {
       )}
 
       <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '24px' }}>
-        <h3 style={{ fontSize: 'clamp(16px, 3vw, 20px)', fontWeight: '600', marginBottom: '16px' }}>Complete Machine Layout</h3>
-        <div style={{ background: 'white', borderRadius: '8px', padding: '16px', height: '550px', overflow: 'auto' }}>
-          <svg width="900" height="1150" style={{ maxWidth: '100%', height: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h3 style={{ fontSize: 'clamp(16px, 3vw, 20px)', fontWeight: '600', margin: 0 }}>Complete Machine Layout</h3>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button onClick={() => scrollMap('left')} disabled={fitMap} style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid #d1d5db', background: fitMap ? '#f3f4f6' : 'white', cursor: fitMap ? 'not-allowed' : 'pointer', opacity: fitMap ? 0.5 : 1 }}>
+                <ChevronLeft size={14} />
+              </button>
+              <button onClick={() => scrollMap('up')} disabled={fitMap} style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid #d1d5db', background: fitMap ? '#f3f4f6' : 'white', cursor: fitMap ? 'not-allowed' : 'pointer', opacity: fitMap ? 0.5 : 1 }}>
+                <ChevronUp size={14} />
+              </button>
+              <button onClick={() => scrollMap('down')} disabled={fitMap} style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid #d1d5db', background: fitMap ? '#f3f4f6' : 'white', cursor: fitMap ? 'not-allowed' : 'pointer', opacity: fitMap ? 0.5 : 1 }}>
+                <ChevronDown size={14} />
+              </button>
+              <button onClick={() => scrollMap('right')} disabled={fitMap} style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid #d1d5db', background: fitMap ? '#f3f4f6' : 'white', cursor: fitMap ? 'not-allowed' : 'pointer', opacity: fitMap ? 0.5 : 1 }}>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+          <button 
+            onClick={() => setFitMap(!fitMap)} 
+            style={{ background: fitMap ? '#2563eb' : '#fff', border: '1px solid #2563eb', color: fitMap ? 'white' : '#2563eb', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            {fitMap ? <Minimize size={14}/> : <Maximize size={14}/>} 
+            {fitMap ? '1:1 Scale' : 'Fit to Screen'}
+          </button>
+        </div>
+        <div className={`map-scroll-container ${fitMap ? 'fit-screen' : ''}`} ref={mapContainerRef}>
+          <svg width="900" height="1200" viewBox="0 0 900 1200">
             {drawZoneConnections()}
             {machines.map(machine => {
               const zone = getZoneForMachine(machine.id);
+              const assignedMemberIds = currentData.assignments[machine.id] || [];
               const machineStatus = machineStatuses[machine.id];
               const fillColor = machineStatus ? STATUS_COLORS[machineStatus] : (zone ? zone.color : '#e5e7eb');
               
               return (
                 <g key={machine.id}>
-                  <rect x={machine.x - 45} y={machine.y - 35} width="90" height="70" fill={fillColor} stroke="#9ca3af" strokeWidth="2" rx="8" />
-                  <text x={machine.x} y={machine.y - 10} textAnchor="middle" style={{ fontSize: '12px', fontWeight: 'bold', fill: machineStatus ? 'white' : '#1f2937' }}>{machine.id}</text>
-                  {machineStatus && (
-                    <text x={machine.x} y={machine.y + 10} textAnchor="middle" style={{ fontSize: '10px', fontWeight: '600', fill: 'white' }}>{machineStatus.toUpperCase().replace('-', ' ')}</text>
+                  <rect x={machine.x - 45} y={machine.y - 35} width="90" height="70" fill={fillColor} stroke={assignedMemberIds.length > 0 ? '#10b981' : '#9ca3af'} strokeWidth="2" rx="8" style={{ cursor: 'pointer' }} onClick={() => { setSelectedMachine(machine); setShowMemberModal(true); }} />
+                  <text x={machine.x} y={machine.y - 15} textAnchor="middle" style={{ fontSize: '11px', fontWeight: 'bold', fill: machineStatus ? 'white' : '#374151', pointerEvents: 'none' }}>{machine.id}</text>
+                  <text x={machine.x} y={machine.y} textAnchor="middle" style={{ fontSize: '10px', fill: machineStatus ? 'white' : '#6b7280', pointerEvents: 'none' }}>{assignedMemberIds.length > 0 ? `${assignedMemberIds.length}/5` : '0/5'}</text>
+                  {assignedMemberIds.length > 0 && (
+                    <text x={machine.x} y={machine.y + 15} textAnchor="middle" style={{ fontSize: '9px', fill: machineStatus ? 'white' : '#059669', pointerEvents: 'none', fontWeight: '600' }}>{getMemberEPF(assignedMemberIds[0]).substring(0, 8)}</text>
                   )}
                 </g>
               );
@@ -1148,6 +1218,34 @@ function ManagerView(props) {
           </svg>
         </div>
       </div>
+
+      {showMemberModal && selectedMachine && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+          <div style={{ background: 'white', borderRadius: '8px', padding: '24px', maxWidth: '28rem', width: '90%', margin: '0 16px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>Assign to {selectedMachine.id}</h3>
+              <button onClick={() => { setShowMemberModal(false); setSelectedMachine(null); }} style={{ color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} /></button>
+            </div>
+            <p style={{ fontSize: '13px', color: '#059669', marginBottom: '12px', fontWeight: '600' }}>
+              Currently assigned: {(currentData.assignments[selectedMachine.id] || []).length}/5
+            </p>
+            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+              <button onClick={() => { assignMemberToMachine(selectedMachine.id, null); setShowMemberModal(false); setSelectedMachine(null); }} style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: '#fee2e2', color: '#991b1b', borderRadius: '8px', border: 'none', cursor: 'pointer', marginBottom: '8px', fontWeight: '600' }}>Clear All Assignments</button>
+              {currentData.teamMembers.map(member => {
+                const isAssigned = (currentData.assignments[selectedMachine.id] || []).includes(member.id);
+                return (
+                  <button key={member.id} onClick={() => assignMemberToMachine(selectedMachine.id, member.id)} style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: isAssigned ? '#dcfce7' : '#eff6ff', borderRadius: '8px', border: isAssigned ? '2px solid #10b981' : 'none', cursor: 'pointer', marginBottom: '8px', fontWeight: isAssigned ? '600' : 'normal' }}>
+                    {member.epf} {isAssigned && '✓'}
+                  </button>
+                );
+              })}
+              {currentData.teamMembers.length === 0 && (
+                <p style={{ color: '#9ca3af', textAlign: 'center', padding: '16px' }}>No EPF numbers. Add members first!</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1157,7 +1255,7 @@ function MapEditorView(props) {
   const { machines, zones, editMode, setEditMode, newMachineName, setNewMachineName,
     newZoneName, setNewZoneName, newZoneColor, setNewZoneColor, handleMachineDrag, addNewMachine,
     deleteMachine, addNewZone, deleteZone, assignMachineToZone, removeMachineFromZone, getZoneForMachine, drawZoneConnections,
-    setSaveStatus } = props;
+    setSaveStatus, fitMap, setFitMap } = props;
 
   return (
     <div>
@@ -1168,7 +1266,11 @@ function MapEditorView(props) {
         <p style={{ color: '#78350f', marginBottom: '12px' }}>
           Configure your factory layout. Drag machines to reposition them on the map.
         </p>
-        <button onClick={() => { setEditMode(!editMode); setSaveStatus(editMode ? '' : '🔧 Edit mode enabled'); }} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: editMode ? '#dc2626' : '#059669', color: 'white', padding: '10px 20px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
+        <button onClick={() => { 
+            setEditMode(!editMode); 
+            if(!editMode) setFitMap(false); // Force scroll mode when editing to keep drag math accurate
+            setSaveStatus(editMode ? '' : '🔧 Edit mode enabled'); 
+          }} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: editMode ? '#dc2626' : '#059669', color: 'white', padding: '10px 20px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
           <Move size={16} />
           {editMode ? 'Exit Edit Mode' : 'Enable Edit Mode'}
         </button>
@@ -1244,35 +1346,42 @@ function MapEditorView(props) {
           <p style={{ color: '#7f1d1d', marginBottom: '12px' }}>
             Click and drag machines on the map below to reposition them. Changes will be saved when you click "SAVE ALL".
           </p>
-          <div style={{ background: 'white', borderRadius: '8px', padding: '16px', height: '550px', overflow: 'auto' }}>
-            <svg width="900" height="1150" style={{ maxWidth: '100%', height: 'auto' }}>
-              {drawZoneConnections()}
-              {machines.map(machine => {
-                const zone = getZoneForMachine(machine.id);
-                return (
-                  <g key={machine.id} style={{ cursor: editMode ? 'move' : 'default' }} onMouseDown={(e) => {
-                    if (!editMode) return;
-                    const svg = e.currentTarget.closest('svg');
-                    const handleMove = (moveE) => {
-                      const rect = svg.getBoundingClientRect();
-                      const x = Math.round(moveE.clientX - rect.left);
-                      const y = Math.round(moveE.clientY - rect.top);
-                      handleMachineDrag(machine, x, y);
-                    };
-                    const handleUp = () => {
-                      document.removeEventListener('mousemove', handleMove);
-                      document.removeEventListener('mouseup', handleUp);
-                    };
-                    document.addEventListener('mousemove', handleMove);
-                    document.addEventListener('mouseup', handleUp);
-                  }}>
-                    <rect x={machine.x - 45} y={machine.y - 35} width="90" height="70" fill={zone ? zone.color : '#e5e7eb'} stroke={editMode ? '#ef4444' : '#9ca3af'} strokeWidth={editMode ? '3' : '2'} rx="8" />
-                    <text x={machine.x} y={machine.y} textAnchor="middle" style={{ fontSize: '12px', fontWeight: 'bold', fill: '#1f2937', pointerEvents: 'none' }}>{machine.id}</text>
-                  </g>
-                );
-              })}
-            </svg>
-          </div>
+          {!fitMap ? (
+            <div className="map-scroll-container">
+              <svg width="900" height="1200" viewBox="0 0 900 1200">
+                {drawZoneConnections()}
+                {machines.map(machine => {
+                  const zone = getZoneForMachine(machine.id);
+                  return (
+                    <g key={machine.id} style={{ cursor: editMode ? 'move' : 'default' }} onMouseDown={(e) => {
+                      if (!editMode) return;
+                      const svg = e.currentTarget.closest('svg');
+                      const handleMove = (moveE) => {
+                        const rect = svg.getBoundingClientRect();
+                        const x = Math.round(moveE.clientX - rect.left);
+                        const y = Math.round(moveE.clientY - rect.top);
+                        handleMachineDrag(machine, x, y);
+                      };
+                      const handleUp = () => {
+                        document.removeEventListener('mousemove', handleMove);
+                        document.removeEventListener('mouseup', handleUp);
+                      };
+                      document.addEventListener('mousemove', handleMove);
+                      document.addEventListener('mouseup', handleUp);
+                    }}>
+                      <rect x={machine.x - 45} y={machine.y - 35} width="90" height="70" fill={zone ? zone.color : '#e5e7eb'} stroke={editMode ? '#ef4444' : '#9ca3af'} strokeWidth={editMode ? '3' : '2'} rx="8" />
+                      <text x={machine.x} y={machine.y} textAnchor="middle" style={{ fontSize: '12px', fontWeight: 'bold', fill: '#1f2937', pointerEvents: 'none' }}>{machine.id}</text>
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
+          ) : (
+            <div style={{ padding: '20px', background: '#fee2e2', borderRadius: '8px', color: '#991b1b', textAlign: 'center' }}>
+              <p>⚠️ "Fit to Screen" mode is disabled during editing to ensure accurate machine placement. Please use 1:1 Scale (Scrolling) to drag machines.</p>
+              <button onClick={() => setFitMap(false)} style={{ marginTop: '10px', background: '#ef4444', color: 'white', padding: '8px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Switch to 1:1 Scale</button>
+            </div>
+          )}
         </div>
       )}
     </div>
