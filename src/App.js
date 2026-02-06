@@ -3,12 +3,12 @@ import {
   Users, Monitor, Grid3x3, Eye, Trash2, Plus, X, Clock, RefreshCw, 
   Wrench, Code, Edit, XCircle, Sun, Moon, Save, UserCheck, 
   AlertCircle, Settings, Move, Download, Play, Plane, Maximize, Minimize,
-  ChevronLeft, ChevronRight, ChevronUp, ChevronDown, RotateCcw
+  ChevronLeft, ChevronRight, ChevronUp, ChevronDown, RotateCcw, Lock
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 // ============================================
-// APP: MACHINE MANAGER (SMART PRIORITY SORT)
+// APP: MACHINE MANAGER (PASSWORD PROTECTED EDITOR)
 // ============================================
 
 function App() {
@@ -35,24 +35,18 @@ function App() {
   const [newMachineName, setNewMachineName] = useState('');
   const [newZoneName, setNewZoneName] = useState('');
   const [newZoneColor, setNewZoneColor] = useState('#fef3c7');
-  
   const [fitMap, setFitMap] = useState(false);
+
+  // --- PASSWORD STATE ---
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState(false);
 
   // =========================================================================
   // 🟢 SMART SORT CONFIGURATION
-  // This defines the order of the GROUPS. Machines inside will be sorted by Number.
   // =========================================================================
   const PREFIX_PRIORITY = [
-    'MJ', // 1st
-    'JL', // 2nd
-    'JC', // 3rd
-    'MS', // 4th
-    'JT', // 5th
-    'TX', // 6th
-    'JQ', // 7th
-    'JB', // 8th
-    'TL', // 9th
-    'ML'  // 10th
+    'MJ', 'JL', 'JC', 'MS', 'JT', 'TX', 'JQ', 'JB', 'TL', 'ML'
   ];
 
   const DEFAULT_ZONES = [
@@ -90,43 +84,23 @@ function App() {
     ];
   };
 
-  // --- SMART SORTING FUNCTION ---
   const getSortedMachines = (machineList) => {
     return [...machineList].sort((a, b) => {
       const idA = (typeof a === 'string' ? a : a.id).toUpperCase();
       const idB = (typeof b === 'string' ? b : b.id).toUpperCase();
-
-      // Parse ID: "MJ-06" -> prefix="MJ", num=6
       const splitId = (id) => {
         const match = id.match(/^([A-Z]+)[^0-9]*(\d+)?/); 
         if (!match) return { prefix: 'ZZZ', num: 999999 };
-        return { 
-          prefix: match[1], 
-          num: match[2] ? parseInt(match[2], 10) : 0 
-        };
+        return { prefix: match[1], num: match[2] ? parseInt(match[2], 10) : 0 };
       };
-
       const parsedA = splitId(idA);
       const parsedB = splitId(idB);
-
-      // Get priority index (default to 999 if not in list)
       let indexA = PREFIX_PRIORITY.indexOf(parsedA.prefix);
       let indexB = PREFIX_PRIORITY.indexOf(parsedB.prefix);
-      
       if (indexA === -1) indexA = 999;
       if (indexB === -1) indexB = 999;
-
-      // 1. Sort by Prefix Priority (MJ < JL < JC ...)
-      if (indexA !== indexB) {
-        return indexA - indexB;
-      }
-
-      // 2. If same Priority group (e.g. both 'Others'), Sort Alphabetically by prefix
-      if (indexA === 999 && parsedA.prefix !== parsedB.prefix) {
-        return parsedA.prefix.localeCompare(parsedB.prefix);
-      }
-
-      // 3. Sort by Number (Ascending)
+      if (indexA !== indexB) return indexA - indexB;
+      if (indexA === 999 && parsedA.prefix !== parsedB.prefix) return parsedA.prefix.localeCompare(parsedB.prefix);
       return parsedA.num - parsedB.num;
     });
   };
@@ -135,18 +109,12 @@ function App() {
     setLoading(true);
     try {
       const { data: mData, error: mError } = await supabase.from('machine_positions').select('*');
-      if (mError || !mData || mData.length === 0) {
-        setMachines(getDefaultMachineLayout());
-      } else {
-        setMachines(mData.map(m => ({ id: m.machine_name, x: m.x_position, y: m.y_position })));
-      }
+      if (mError || !mData || mData.length === 0) setMachines(getDefaultMachineLayout());
+      else setMachines(mData.map(m => ({ id: m.machine_name, x: m.x_position, y: m.y_position })));
 
       const { data: zData, error: zError } = await supabase.from('zone_definitions').select('*');
-      if (zError || !zData || zData.length === 0) {
-        setZones(DEFAULT_ZONES);
-      } else {
-        setZones(zData.map(z => ({ id: z.id, name: z.zone_name, machines: z.machines || [], color: z.color || '#f3f4f6' })));
-      }
+      if (zError || !zData || zData.length === 0) setZones(DEFAULT_ZONES);
+      else setZones(zData.map(z => ({ id: z.id, name: z.zone_name, machines: z.machines || [], color: z.color || '#f3f4f6' })));
 
       const { data: zlData } = await supabase.from('zone_label_positions').select('*');
       if (zlData && zlData.length > 0) {
@@ -247,6 +215,26 @@ function App() {
   useEffect(() => {
     loadAllData();
   }, [loadAllData]);
+
+  // --- PASSWORD HANDLERS ---
+  const handleTabChange = (tabId) => {
+    if (tabId === 'mapeditor') {
+      setPasswordError(false);
+      setPasswordInput('');
+      setShowPasswordModal(true);
+    } else {
+      setActiveTab(tabId);
+    }
+  };
+
+  const handlePasswordSubmit = () => {
+    if (passwordInput === '1234') { // 🔒 CHANGE THIS PASSWORD IF NEEDED
+      setShowPasswordModal(false);
+      setActiveTab('mapeditor');
+    } else {
+      setPasswordError(true);
+    }
+  };
 
   const toggleDayNight = (shift) => {
     setShiftData(prev => ({ ...prev, [shift]: { ...prev[shift], dayNight: prev[shift].dayNight === 'day' ? 'night' : 'day' } }));
@@ -830,7 +818,7 @@ function App() {
               { id: 'view', label: 'Manager View', icon: Eye },
               { id: 'mapeditor', label: 'Map Editor', icon: Settings }
             ].map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '12px 24px', fontWeight: '500', background: activeTab === tab.id ? 'white' : 'transparent', color: activeTab === tab.id ? '#2563eb' : '#4b5563', border: 'none', borderBottom: activeTab === tab.id ? '2px solid #2563eb' : 'none', cursor: 'pointer', fontSize: 'clamp(12px, 2vw, 16px)' }}>
+              <button key={tab.id} onClick={() => handleTabChange(tab.id)} style={{ padding: '12px 24px', fontWeight: '500', background: activeTab === tab.id ? 'white' : 'transparent', color: activeTab === tab.id ? '#2563eb' : '#4b5563', border: 'none', borderBottom: activeTab === tab.id ? '2px solid #2563eb' : 'none', cursor: 'pointer', fontSize: 'clamp(12px, 2vw, 16px)' }}>
                 <tab.icon size={16} style={{ display: 'inline', marginRight: '8px' }} />
                 {tab.label}
               </button>
@@ -844,6 +832,37 @@ function App() {
           </div>
         </div>
       </div>
+
+      {/* PASSWORD MODAL */}
+      {showPasswordModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ background: 'white', borderRadius: '12px', padding: '24px', width: '90%', maxWidth: '350px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+              <div style={{ background: '#eff6ff', width: '48px', height: '48px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px auto' }}>
+                <Lock size={24} color="#2563eb" />
+              </div>
+              <h3 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0, color: '#1f2937' }}>Protected Area</h3>
+              <p style={{ color: '#6b7280', fontSize: '14px', margin: '8px 0 0 0' }}>Enter password to access Map Editor</p>
+            </div>
+            
+            <input 
+              type="password" 
+              value={passwordInput} 
+              onChange={(e) => setPasswordInput(e.target.value)} 
+              onKeyPress={(e) => e.key === 'Enter' && handlePasswordSubmit()}
+              placeholder="Enter Password" 
+              autoFocus
+              style={{ width: '100%', padding: '12px', borderRadius: '8px', border: `2px solid ${passwordError ? '#ef4444' : '#e5e7eb'}`, fontSize: '16px', marginBottom: '8px', textAlign: 'center', letterSpacing: '2px' }} 
+            />
+            {passwordError && <p style={{ color: '#ef4444', fontSize: '12px', textAlign: 'center', margin: '0 0 12px 0', fontWeight: 'bold' }}>Incorrect Password</p>}
+            
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={() => { setShowPasswordModal(false); setPasswordInput(''); setPasswordError(false); }} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', background: 'white', color: '#374151', fontWeight: '600', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={handlePasswordSubmit} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: '#2563eb', color: 'white', fontWeight: '600', cursor: 'pointer' }}>Enter</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
