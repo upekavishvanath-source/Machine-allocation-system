@@ -3,12 +3,12 @@ import {
   Users, Monitor, Grid3x3, Eye, Trash2, Plus, X, Clock, RefreshCw, 
   Wrench, Code, Edit, XCircle, Sun, Moon, Save, UserCheck, 
   AlertCircle, Settings, Move, Download, Play, Plane, Maximize, Minimize,
-  ChevronLeft, ChevronRight, ChevronUp, ChevronDown
+  ChevronLeft, ChevronRight, ChevronUp, ChevronDown, RotateCcw
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 // ============================================
-// COMPLETE APP - FIXED ERRORS & LAYOUT
+// APP: MACHINE MANAGER (SMART PRIORITY SORT)
 // ============================================
 
 function App() {
@@ -36,8 +36,24 @@ function App() {
   const [newZoneName, setNewZoneName] = useState('');
   const [newZoneColor, setNewZoneColor] = useState('#fef3c7');
   
-  // SHARED STATE FOR MAP FITTING
   const [fitMap, setFitMap] = useState(false);
+
+  // =========================================================================
+  // 🟢 SMART SORT CONFIGURATION
+  // This defines the order of the GROUPS. Machines inside will be sorted by Number.
+  // =========================================================================
+  const PREFIX_PRIORITY = [
+    'MJ', // 1st
+    'JL', // 2nd
+    'JC', // 3rd
+    'MS', // 4th
+    'JT', // 5th
+    'TX', // 6th
+    'JQ', // 7th
+    'JB', // 8th
+    'TL', // 9th
+    'ML'  // 10th
+  ];
 
   const DEFAULT_ZONES = [
     { id: 1, name: 'Zone A', machines: ['MJ-06', 'MJ-14', 'MJ-09', 'MJ-16'], color: '#fef3c7' },
@@ -74,10 +90,50 @@ function App() {
     ];
   };
 
+  // --- SMART SORTING FUNCTION ---
+  const getSortedMachines = (machineList) => {
+    return [...machineList].sort((a, b) => {
+      const idA = (typeof a === 'string' ? a : a.id).toUpperCase();
+      const idB = (typeof b === 'string' ? b : b.id).toUpperCase();
+
+      // Parse ID: "MJ-06" -> prefix="MJ", num=6
+      const splitId = (id) => {
+        const match = id.match(/^([A-Z]+)[^0-9]*(\d+)?/); 
+        if (!match) return { prefix: 'ZZZ', num: 999999 };
+        return { 
+          prefix: match[1], 
+          num: match[2] ? parseInt(match[2], 10) : 0 
+        };
+      };
+
+      const parsedA = splitId(idA);
+      const parsedB = splitId(idB);
+
+      // Get priority index (default to 999 if not in list)
+      let indexA = PREFIX_PRIORITY.indexOf(parsedA.prefix);
+      let indexB = PREFIX_PRIORITY.indexOf(parsedB.prefix);
+      
+      if (indexA === -1) indexA = 999;
+      if (indexB === -1) indexB = 999;
+
+      // 1. Sort by Prefix Priority (MJ < JL < JC ...)
+      if (indexA !== indexB) {
+        return indexA - indexB;
+      }
+
+      // 2. If same Priority group (e.g. both 'Others'), Sort Alphabetically by prefix
+      if (indexA === 999 && parsedA.prefix !== parsedB.prefix) {
+        return parsedA.prefix.localeCompare(parsedB.prefix);
+      }
+
+      // 3. Sort by Number (Ascending)
+      return parsedA.num - parsedB.num;
+    });
+  };
+
   const loadAllData = useCallback(async () => {
     setLoading(true);
     try {
-      // Load Machines
       const { data: mData, error: mError } = await supabase.from('machine_positions').select('*');
       if (mError || !mData || mData.length === 0) {
         setMachines(getDefaultMachineLayout());
@@ -85,7 +141,6 @@ function App() {
         setMachines(mData.map(m => ({ id: m.machine_name, x: m.x_position, y: m.y_position })));
       }
 
-      // Load Zones
       const { data: zData, error: zError } = await supabase.from('zone_definitions').select('*');
       if (zError || !zData || zData.length === 0) {
         setZones(DEFAULT_ZONES);
@@ -93,7 +148,6 @@ function App() {
         setZones(zData.map(z => ({ id: z.id, name: z.zone_name, machines: z.machines || [], color: z.color || '#f3f4f6' })));
       }
 
-      // Load Zone Labels
       const { data: zlData } = await supabase.from('zone_label_positions').select('*');
       if (zlData && zlData.length > 0) {
         const positions = {};
@@ -101,7 +155,6 @@ function App() {
         setZoneLabelPositions(positions);
       }
 
-      // Load Settings
       const { data: sData } = await supabase.from('shift_settings').select('*');
       if (sData) {
         setShiftData(prev => {
@@ -111,7 +164,6 @@ function App() {
         });
       }
 
-      // Load Attendance
       const { data: aData } = await supabase.from('attendance').select('*');
       if (aData) {
         setShiftData(prev => {
@@ -121,7 +173,6 @@ function App() {
         });
       }
 
-      // Load Worker Counts
       const { data: wcData } = await supabase.from('worker_counts').select('*');
       if (wcData) {
         setShiftData(prev => {
@@ -144,7 +195,6 @@ function App() {
         });
       }
 
-      // Load Workers
       const { data: wData } = await supabase.from('workers').select('*');
       if (wData) {
         setShiftData(prev => {
@@ -158,7 +208,6 @@ function App() {
         });
       }
 
-      // Load Allocations
       const { data: alData } = await supabase.from('allocations').select('*');
       if (alData) {
         const newAssignments = { A: {}, B: {}, C: {} };
@@ -177,7 +226,6 @@ function App() {
         }));
       }
 
-      // Load Statuses
       const { data: stData } = await supabase.from('machine_statuses').select('*');
       if (stData) {
         const s = {};
@@ -313,7 +361,11 @@ function App() {
           re_work: shiftData[shift].reWorkCount, 
           warp_beam: shiftData[shift].warpBeamCount,
           machine_assign: shiftData[shift].machineAssignCount,
-          setup_alteration: shiftData[shift].setupAlterationCount
+          setup_alteration: shiftData[shift].setupAlterationCount,
+          tl: shiftData[shift].tlCount,
+          greige_boil: shiftData[shift].greigeBoilCount,
+          yarn_preparation: shiftData[shift].yarnPreparationCount,
+          pilot: shiftData[shift].pilotCount
         };
         if (ec) await supabase.from('worker_counts').update(cd).eq('shift', shift);
         else await supabase.from('worker_counts').insert([cd]);
@@ -377,12 +429,28 @@ function App() {
     }
   };
 
-  const clearMap = () => {
-    if (window.confirm('Clear all allocations?')) {
-      setShiftData(prev => ({ ...prev, [activeShift]: { ...prev[activeShift], assignments: {} } }));
-      setMachineStatuses({});
+  const clearShiftData = () => {
+    if (window.confirm(`Are you sure you want to clear ALL allocation counts and assignments for Shift ${activeShift}? This will reset Total Attendance and all counters.`)) {
+      setShiftData(prev => ({
+        ...prev,
+        [activeShift]: {
+          ...prev[activeShift],
+          totalAttendance: 0,
+          otherWorkersCount: 0,
+          webTransportCount: 0,
+          reWorkCount: 0,
+          warpBeamCount: 0,
+          machineAssignCount: 0,
+          setupAlterationCount: 0,
+          tlCount: 0,
+          greigeBoilCount: 0,
+          yarnPreparationCount: 0,
+          pilotCount: 0,
+          assignments: {}
+        }
+      }));
       setHasUnsavedChanges(true);
-      setSaveStatus('⚠️ Cleared - Click SAVE');
+      setSaveStatus('⚠️ Data cleared - Click SAVE');
     }
   };
 
@@ -611,14 +679,14 @@ function App() {
     showMemberModal, setShowMemberModal, showStatusMenu, setShowStatusMenu,
     activeStatusFilter, setActiveStatusFilter, toggleDayNight, updateTotalAttendance,
     updateWorkerCount, addTeamMember, removeTeamMember, assignMemberToMachine,
-    setMachineStatus, clearMap, getMemberEPF, getZoneForMachine, getShiftColor,
+    setMachineStatus, getMemberEPF, getZoneForMachine, getShiftColor,
     getShiftLabel, getRemainingWorkers, drawZoneConnections, STATUS_COLORS,
     getCurrentShiftData, setSaveStatus, hasUnsavedChanges, setHasUnsavedChanges,
     editMode, setEditMode, newMachineName, setNewMachineName, newZoneName,
     setNewZoneName, newZoneColor, setNewZoneColor, handleMachineDrag,
     addNewMachine, deleteMachine, addNewZone, deleteZone, assignMachineToZone,
     removeMachineFromZone, downloadFinalOverviewCSV,
-    fitMap, setFitMap 
+    fitMap, setFitMap, getSortedMachines, clearShiftData
   };
 
   return (
@@ -713,7 +781,6 @@ function App() {
                 </p>
               </div>
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                {/* GLOBAL FIT BUTTON NEXT TO SAVE */}
                 <button 
                   onClick={() => setFitMap(!fitMap)} 
                   style={{ display: 'flex', alignItems: 'center', gap: '8px', background: fitMap ? '#2563eb' : 'rgba(255,255,255,0.2)', color: 'white', padding: '10px 20px', borderRadius: '8px', border: fitMap ? '2px solid white' : '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}
@@ -749,6 +816,11 @@ function App() {
                   {shift === 'A' ? '☀️' : shift === 'B' ? '🌤️' : '🌙'} Shift {shift}
                 </button>
               ))}
+              
+              <div style={{ width: '2px', height: '24px', background: '#d1d5db', margin: '0 8px' }}></div>
+              <button onClick={clearShiftData} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', border: '1px solid #ef4444', color: '#dc2626', background: '#fee2e2', fontWeight: '600', cursor: 'pointer', fontSize: 'clamp(12px, 2vw, 14px)' }}>
+                <RotateCcw size={14} /> Clear Allocation Data
+              </button>
             </div>
           </div>
 
@@ -782,8 +854,8 @@ function SetupView(props) {
     selectedMachine, setSelectedMachine, showMemberModal, setShowMemberModal, showStatusMenu,
     setShowStatusMenu, activeStatusFilter, setActiveStatusFilter, toggleDayNight, updateTotalAttendance,
     updateWorkerCount, addTeamMember, removeTeamMember, assignMemberToMachine, setMachineStatus,
-    clearMap, getMemberEPF, getZoneForMachine, getShiftColor, getRemainingWorkers,
-    drawZoneConnections, STATUS_COLORS, getCurrentShiftData, fitMap, setFitMap } = props;
+    getMemberEPF, getZoneForMachine, getShiftColor, getRemainingWorkers,
+    drawZoneConnections, STATUS_COLORS, getCurrentShiftData, fitMap, getSortedMachines } = props;
 
   const currentData = getCurrentShiftData();
   const mapContainerRef = useRef(null);
@@ -958,8 +1030,6 @@ function SetupView(props) {
               </button>
             </div>
           </div>
-          
-          <button onClick={clearMap} style={{ background: '#dc2626', color: 'white', padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px' }}>Clear Map</button>
         </div>
         
         <div className={`map-scroll-container ${fitMap ? 'fit-screen' : ''}`} ref={mapContainerRef}>
@@ -1023,7 +1093,8 @@ function SetupView(props) {
             </div>
             <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '16px' }}>Click machines to toggle status.</p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '8px' }}>
-              {machines.map(machine => {
+              {/* SORTED MACHINES HERE */}
+              {getSortedMachines(machines).map(machine => {
                 const currentStatus = machineStatuses[machine.id];
                 const isSelected = currentStatus === activeStatusFilter;
                 return (
@@ -1046,7 +1117,6 @@ function ManagerView(props) {
   const { shiftData, machines, zones, machineStatuses, getShiftLabel, getShiftColor, getZoneForMachine, STATUS_COLORS, drawZoneConnections, getRemainingWorkers, fitMap, setFitMap, setSelectedMachine, setShowMemberModal, selectedMachine, showMemberModal, assignMemberToMachine, activeShift, getMemberEPF } = props;
   const mapContainerRef = useRef(null);
 
-  // Fix: Default to Shift A if no active shift, handle potentially undefined shiftData
   const currentData = (shiftData && shiftData[activeShift]) ? shiftData[activeShift] : { assignments: {}, teamMembers: [] };
 
   const scrollMap = (direction) => {
@@ -1203,7 +1273,6 @@ function ManagerView(props) {
                   {machineStatus && (
                     <text x={machine.x} y={machine.y + 10} textAnchor="middle" style={{ fontSize: '10px', fontWeight: '600', fill: 'white' }}>{machineStatus.toUpperCase().replace('-', ' ')}</text>
                   )}
-                   {/* Fix: Added missing logic to show assigned EPF if needed, though usually Manager view is high-level */}
                 </g>
               );
             })}
@@ -1247,7 +1316,7 @@ function MapEditorView(props) {
   const { machines, zones, editMode, setEditMode, newMachineName, setNewMachineName,
     newZoneName, setNewZoneName, newZoneColor, setNewZoneColor, handleMachineDrag, addNewMachine,
     deleteMachine, addNewZone, deleteZone, assignMachineToZone, removeMachineFromZone, getZoneForMachine, drawZoneConnections,
-    setSaveStatus, fitMap, setFitMap } = props;
+    setSaveStatus, fitMap, setFitMap, getSortedMachines } = props;
 
   return (
     <div>
@@ -1290,7 +1359,7 @@ function MapEditorView(props) {
       <div style={{ background: 'white', borderRadius: '8px', padding: '20px', marginBottom: '24px', border: '2px solid #e5e7eb' }}>
         <h3 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '12px' }}>All Machines ({machines.length})</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '8px', maxHeight: '300px', overflowY: 'auto' }}>
-          {machines.map(machine => {
+          {getSortedMachines(machines).map(machine => {
             const zone = getZoneForMachine(machine.id);
             return (
               <div key={machine.id} style={{ padding: '10px', background: zone ? zone.color : '#f3f4f6', borderRadius: '6px', border: '2px solid #d1d5db', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1323,7 +1392,7 @@ function MapEditorView(props) {
               <label style={{ fontSize: '12px', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Assign machine to this zone:</label>
               <select onChange={(e) => { if (e.target.value) { assignMachineToZone(e.target.value, zone.id); e.target.value = ''; } }} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '2px solid #d1d5db' }}>
                 <option value="">Select machine...</option>
-                {machines.filter(m => !zone.machines.includes(m.id)).map(m => (
+                {getSortedMachines(machines.filter(m => !zone.machines.includes(m.id))).map(m => (
                   <option key={m.id} value={m.id}>{m.id}</option>
                 ))}
               </select>
