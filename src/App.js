@@ -433,7 +433,7 @@ function App() {
           tlCount: 0,
           greigeBoilCount: 0,
           yarnPreparationCount: 0,
-          pilotCount: 0,
+          
           assignments: {}
         }
       }));
@@ -570,7 +570,7 @@ function App() {
     const d = shiftData[shift];
     return d.totalAttendance - d.otherWorkersCount - d.webTransportCount - d.reWorkCount - d.warpBeamCount - 
            (d.machineAssignCount || 0) - (d.setupAlterationCount || 0) - (d.tlCount || 0) - 
-           (d.greigeBoilCount || 0) - (d.yarnPreparationCount || 0) - (d.pilotCount || 0);
+           (d.greigeBoilCount || 0) - (d.yarnPreparationCount || 0) ;
   };
 
   const drawZoneConnections = () => {
@@ -919,8 +919,8 @@ function SetupView(props) {
                 { label: "Warp Beam", value: currentData.warpBeamCount, color: "#0891b2" },
                 { label: "TL", value: currentData.tlCount || 0, color: "#ec4899" },
                 { label: "Greige/Boil", value: currentData.greigeBoilCount || 0, color: "#6366f1" },
-                { label: "Yarn Prep", value: currentData.yarnPreparationCount || 0, color: "#14b8a6" },
-                { label: "Pilot", value: currentData.pilotCount || 0, color: "#f97316" }
+                { label: "Yarn Prep", value: currentData.yarnPreparationCount || 0, color: "#14b8a6" }
+                
              ].map((item, idx) => (
                 <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>{item.label}:</span>
@@ -975,10 +975,8 @@ function SetupView(props) {
                 <h3 style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '4px', color: '#115e59' }}>Yarn Prep</h3>
                 <input type="number" min="0" value={currentData.yarnPreparationCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'yarnPreparationCount', e.target.value)} style={{ width: '100%', padding: '4px', borderRadius: '4px', border: '1px solid #ddd', textAlign: 'center' }} />
             </div>
-             <div style={{ background: '#ffedd5', borderRadius: '8px', padding: '10px', border: '1px solid #f97316' }}>
-                <h3 style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '4px', color: '#9a3412' }}>Pilot</h3>
-                <input type="number" min="0" value={currentData.pilotCount || 0} onChange={(e) => updateWorkerCount(activeShift, 'pilotCount', e.target.value)} style={{ width: '100%', padding: '4px', borderRadius: '4px', border: '1px solid #ddd', textAlign: 'center' }} />
-            </div>
+             
+            
         </div>
 
         <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '12px', border: '2px solid #e5e7eb' }}>
