@@ -652,6 +652,76 @@ function App() {
     return elements;
   };
 
+  const drawMachineNode = (machine, currentData, machineStatuses, STATUS_COLORS, getMemberEPF, getZoneForMachine) => {
+    const zone = getZoneForMachine(machine.id);
+    const assignedMemberIds = currentData.assignments[machine.id] || [];
+    const machineStatus = machineStatuses[machine.id];
+    const fillColor = machineStatus ? STATUS_COLORS[machineStatus] : (zone ? zone.color : '#e5e7eb');
+    
+    // Dynamic Height Calculation: Base 70px + extra space for each worker if > 0
+    const baseHeight = 70;
+    // Calculate content height needed: Header space + (number of workers * line height)
+    // Starts expanding only if there are workers.
+    const assignedCount = assignedMemberIds.length;
+    const contentHeight = assignedCount > 0 ? 50 + (assignedCount * 16) : baseHeight;
+    const rectHeight = Math.max(baseHeight, contentHeight);
+    
+    // Center the rect around machine.y
+    const halfHeight = rectHeight / 2;
+
+    return (
+      <g key={machine.id}>
+        <rect 
+          x={machine.x - 45} 
+          y={machine.y - halfHeight} 
+          width="90" 
+          height={rectHeight} 
+          fill={fillColor} 
+          stroke={assignedCount > 0 ? '#10b981' : '#9ca3af'} 
+          strokeWidth="2" 
+          rx="8" 
+          style={{ cursor: 'pointer' }} 
+          onClick={() => { setSelectedMachine(machine); setShowMemberModal(true); }} 
+        />
+        
+        {/* Machine ID - Always at the top inside the box */}
+        <text 
+          x={machine.x} 
+          y={machine.y - halfHeight + 20} 
+          textAnchor="middle" 
+          style={{ fontSize: '13px', fontWeight: 'bold', fill: machineStatus ? 'white' : '#1f2937', pointerEvents: 'none' }}
+        >
+          {machine.id}
+        </text>
+
+        {/* Status Label - If active status */}
+        {machineStatus && assignedCount === 0 && (
+          <text x={machine.x} y={machine.y + 5} textAnchor="middle" style={{ fontSize: '11px', fontWeight: '600', fill: 'white' }}>
+            {machineStatus.toUpperCase().replace('-', ' ')}
+          </text>
+        )}
+
+        {/* Count Label - Only if NO specific assignments shown (e.g. 0/5) */}
+        {assignedCount === 0 && !machineStatus && (
+           <text x={machine.x} y={machine.y + 5} textAnchor="middle" style={{ fontSize: '11px', fill: '#6b7280', pointerEvents: 'none' }}>0/5</text>
+        )}
+
+        {/* Assigned EPF List - Dynamically rendered */}
+        {assignedCount > 0 && assignedMemberIds.map((mid, idx) => (
+          <text 
+            key={mid}
+            x={machine.x} 
+            y={machine.y - halfHeight + 40 + (idx * 16)} 
+            textAnchor="middle" 
+            style={{ fontSize: '14px', fill: machineStatus ? 'white' : '#059669', pointerEvents: 'none', fontWeight: '700' }}
+          >
+            {getMemberEPF(mid).substring(0, 8)}
+          </text>
+        ))}
+      </g>
+    );
+  };
+
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(to bottom right, #eff6ff, #e0e7ff)' }}>
@@ -678,7 +748,7 @@ function App() {
     addNewMachine, deleteMachine, addNewZone, deleteZone, assignMachineToZone,
     removeMachineFromZone, downloadFinalOverviewCSV,
     fitMap, setFitMap, getSortedMachines, clearShiftData,
-    showFullScreenMap, setShowFullScreenMap // Pass fullscreen props
+    showFullScreenMap, setShowFullScreenMap, drawMachineNode // Added drawMachineNode to props
   };
 
   return (
@@ -879,7 +949,7 @@ function SetupView(props) {
     updateWorkerCount, addTeamMember, removeTeamMember, assignMemberToMachine, setMachineStatus,
     getMemberEPF, getZoneForMachine, getShiftColor, getRemainingWorkers,
     drawZoneConnections, STATUS_COLORS, getCurrentShiftData, fitMap, getSortedMachines,
-    showFullScreenMap, setShowFullScreenMap // Destructure fullscreen props
+    showFullScreenMap, setShowFullScreenMap, drawMachineNode // Destructure new prop
   } = props;
 
   const currentData = getCurrentShiftData();
@@ -1066,23 +1136,7 @@ function SetupView(props) {
         <div className={`map-scroll-container ${fitMap ? 'fit-screen' : ''}`} ref={mapContainerRef}>
           <svg width="900" height="1200" viewBox="0 0 900 1200">
             {drawZoneConnections()}
-            {machines.map(machine => {
-              const zone = getZoneForMachine(machine.id);
-              const assignedMemberIds = currentData.assignments[machine.id] || [];
-              const machineStatus = machineStatuses[machine.id];
-              const fillColor = machineStatus ? STATUS_COLORS[machineStatus] : (zone ? zone.color : '#e5e7eb');
-              
-              return (
-                <g key={machine.id}>
-                  <rect x={machine.x - 45} y={machine.y - 35} width="90" height="70" fill={fillColor} stroke={assignedMemberIds.length > 0 ? '#10b981' : '#9ca3af'} strokeWidth="2" rx="8" style={{ cursor: 'pointer' }} onClick={() => { setSelectedMachine(machine); setShowMemberModal(true); }} />
-                  <text x={machine.x} y={machine.y - 15} textAnchor="middle" style={{ fontSize: '11px', fontWeight: 'bold', fill: machineStatus ? 'white' : '#374151', pointerEvents: 'none' }}>{machine.id}</text>
-                  <text x={machine.x} y={machine.y} textAnchor="middle" style={{ fontSize: '10px', fill: machineStatus ? 'white' : '#6b7280', pointerEvents: 'none' }}>{assignedMemberIds.length > 0 ? `${assignedMemberIds.length}/5` : '0/5'}</text>
-                  {assignedMemberIds.length > 0 && (
-                    <text x={machine.x} y={machine.y + 15} textAnchor="middle" style={{ fontSize: '9px', fill: machineStatus ? 'white' : '#059669', pointerEvents: 'none', fontWeight: '600' }}>{getMemberEPF(assignedMemberIds[0]).substring(0, 8)}</text>
-                  )}
-                </g>
-              );
-            })}
+            {machines.map(machine => drawMachineNode(machine, currentData, machineStatuses, STATUS_COLORS, getMemberEPF, getZoneForMachine))}
           </svg>
         </div>
       </div>
@@ -1110,37 +1164,8 @@ function SetupView(props) {
               preserveAspectRatio="xMidYMid meet" 
               style={{ width: '100%', height: '100%', maxHeight: '100vh', maxWidth: '100vw' }}
             >
-              {/* Reuse logic for drawing connections */}
               {drawZoneConnections()}
-              {/* Reuse logic for drawing machines */}
-              {machines.map(machine => {
-                const zone = getZoneForMachine(machine.id);
-                const assignedMemberIds = currentData.assignments[machine.id] || [];
-                const machineStatus = machineStatuses[machine.id];
-                const fillColor = machineStatus ? STATUS_COLORS[machineStatus] : (zone ? zone.color : '#e5e7eb');
-                
-                return (
-                  <g key={machine.id}>
-                    <rect 
-                      x={machine.x - 45} 
-                      y={machine.y - 35} 
-                      width="90" 
-                      height="70" 
-                      fill={fillColor} 
-                      stroke={assignedMemberIds.length > 0 ? '#10b981' : '#9ca3af'} 
-                      strokeWidth="2" 
-                      rx="8" 
-                      style={{ cursor: 'pointer' }} 
-                      onClick={() => { setSelectedMachine(machine); setShowMemberModal(true); }} // Allow interaction in fullscreen
-                    />
-                    <text x={machine.x} y={machine.y - 15} textAnchor="middle" style={{ fontSize: '11px', fontWeight: 'bold', fill: machineStatus ? 'white' : '#374151', pointerEvents: 'none' }}>{machine.id}</text>
-                    <text x={machine.x} y={machine.y} textAnchor="middle" style={{ fontSize: '10px', fill: machineStatus ? 'white' : '#6b7280', pointerEvents: 'none' }}>{assignedMemberIds.length > 0 ? `${assignedMemberIds.length}/5` : '0/5'}</text>
-                    {assignedMemberIds.length > 0 && (
-                      <text x={machine.x} y={machine.y + 15} textAnchor="middle" style={{ fontSize: '20px', fill: machineStatus ? 'white' : '#059669', pointerEvents: 'none', fontWeight: '600' }}>{getMemberEPF(assignedMemberIds[0]).substring(0, 8)}</text>
-                    )}
-                  </g>
-                );
-              })}
+              {machines.map(machine => drawMachineNode(machine, currentData, machineStatuses, STATUS_COLORS, getMemberEPF, getZoneForMachine))}
             </svg>
           </div>
         </div>
@@ -1204,7 +1229,7 @@ function SetupView(props) {
 
 // MANAGER VIEW COMPONENT
 function ManagerView(props) {
-  const { shiftData, machines, zones, machineStatuses, getShiftLabel, getShiftColor, getZoneForMachine, STATUS_COLORS, drawZoneConnections, getRemainingWorkers, fitMap, setFitMap, setSelectedMachine, setShowMemberModal, selectedMachine, showMemberModal, assignMemberToMachine, activeShift, getMemberEPF } = props;
+  const { shiftData, machines, zones, machineStatuses, getShiftLabel, getShiftColor, getZoneForMachine, STATUS_COLORS, drawZoneConnections, getRemainingWorkers, fitMap, setFitMap, setSelectedMachine, setShowMemberModal, selectedMachine, showMemberModal, assignMemberToMachine, activeShift, getMemberEPF, drawMachineNode } = props;
   const mapContainerRef = useRef(null);
 
   const currentData = (shiftData && shiftData[activeShift]) ? shiftData[activeShift] : { assignments: {}, teamMembers: [] };
@@ -1351,21 +1376,7 @@ function ManagerView(props) {
         <div className={`map-scroll-container ${fitMap ? 'fit-screen' : ''}`} ref={mapContainerRef}>
           <svg width="900" height="1200" viewBox="0 0 900 1200">
             {drawZoneConnections()}
-            {machines.map(machine => {
-              const zone = getZoneForMachine(machine.id);
-              const machineStatus = machineStatuses[machine.id];
-              const fillColor = machineStatus ? STATUS_COLORS[machineStatus] : (zone ? zone.color : '#e5e7eb');
-              
-              return (
-                <g key={machine.id}>
-                  <rect x={machine.x - 45} y={machine.y - 35} width="90" height="70" fill={fillColor} stroke="#9ca3af" strokeWidth="2" rx="8" style={{ cursor: 'pointer' }} onClick={() => { setSelectedMachine(machine); setShowMemberModal(true); }} />
-                  <text x={machine.x} y={machine.y - 10} textAnchor="middle" style={{ fontSize: '12px', fontWeight: 'bold', fill: machineStatus ? 'white' : '#1f2937' }}>{machine.id}</text>
-                  {machineStatus && (
-                    <text x={machine.x} y={machine.y + 10} textAnchor="middle" style={{ fontSize: '10px', fontWeight: '600', fill: 'white' }}>{machineStatus.toUpperCase().replace('-', ' ')}</text>
-                  )}
-                </g>
-              );
-            })}
+            {machines.map(machine => drawMachineNode(machine, currentData, machineStatuses, STATUS_COLORS, getMemberEPF, getZoneForMachine))}
           </svg>
         </div>
       </div>
