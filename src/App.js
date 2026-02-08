@@ -36,6 +36,9 @@ function App() {
   const [newZoneName, setNewZoneName] = useState('');
   const [newZoneColor, setNewZoneColor] = useState('#fef3c7');
   const [fitMap, setFitMap] = useState(false);
+  
+  // NEW: Fullscreen State
+  const [showFullScreenMap, setShowFullScreenMap] = useState(false);
 
   // --- PASSWORD STATE ---
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -433,7 +436,7 @@ function App() {
           tlCount: 0,
           greigeBoilCount: 0,
           yarnPreparationCount: 0,
-          
+           
           assignments: {}
         }
       }));
@@ -509,10 +512,10 @@ function App() {
   const downloadFinalOverviewCSV = () => {
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    
+     
     let csvContent = "data:text/csv;charset=utf-8,";
     csvContent += "Date,Shift,Day/Night,Total Attendance,Other Workers,Web Transport,Re-Work,Warp Beam,Machine Assign,Setup/Alteration,TL,Greige/Boil,Yarn Preparation,Pilot,Setup Count,Alteration Count,Running Count,Pilot Count,Man to Machine Ratio\n";
-    
+     
     ['A', 'B', 'C'].forEach(shift => {
       const d = shiftData[shift];
       
@@ -552,7 +555,7 @@ function App() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
+     
     setSaveStatus('✅ Final Overview CSV downloaded!');
     setTimeout(() => setSaveStatus(''), 3000);
   };
@@ -674,7 +677,8 @@ function App() {
     setNewZoneName, newZoneColor, setNewZoneColor, handleMachineDrag,
     addNewMachine, deleteMachine, addNewZone, deleteZone, assignMachineToZone,
     removeMachineFromZone, downloadFinalOverviewCSV,
-    fitMap, setFitMap, getSortedMachines, clearShiftData
+    fitMap, setFitMap, getSortedMachines, clearShiftData,
+    showFullScreenMap, setShowFullScreenMap // Pass fullscreen props
   };
 
   return (
@@ -874,7 +878,9 @@ function SetupView(props) {
     setShowStatusMenu, activeStatusFilter, setActiveStatusFilter, toggleDayNight, updateTotalAttendance,
     updateWorkerCount, addTeamMember, removeTeamMember, assignMemberToMachine, setMachineStatus,
     getMemberEPF, getZoneForMachine, getShiftColor, getRemainingWorkers,
-    drawZoneConnections, STATUS_COLORS, getCurrentShiftData, fitMap, getSortedMachines } = props;
+    drawZoneConnections, STATUS_COLORS, getCurrentShiftData, fitMap, getSortedMachines,
+    showFullScreenMap, setShowFullScreenMap // Destructure fullscreen props
+  } = props;
 
   const currentData = getCurrentShiftData();
   const mapContainerRef = useRef(null);
@@ -911,21 +917,21 @@ function SetupView(props) {
           
           <div style={{ marginTop: '8px', padding: '6px', background: 'white', borderRadius: '4px', fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
              {[
-                { label: "Machine Assign", value: currentData.machineAssignCount || 0, color: "#10b981" },
-                { label: "Setup/Alteration", value: currentData.setupAlterationCount || 0, color: "#8b5cf6" },
-                { label: "Other Workers", value: currentData.otherWorkersCount, color: "#2563eb" },
-                { label: "Web Transport", value: currentData.webTransportCount, color: "#7c3aed" },
-                { label: "Re-Work", value: currentData.reWorkCount, color: "#ea580c" },
-                { label: "Warp Beam", value: currentData.warpBeamCount, color: "#0891b2" },
-                { label: "TL", value: currentData.tlCount || 0, color: "#ec4899" },
-                { label: "Greige/Boil", value: currentData.greigeBoilCount || 0, color: "#6366f1" },
-                { label: "Yarn Prep", value: currentData.yarnPreparationCount || 0, color: "#14b8a6" }
-                
+               { label: "Machine Assign", value: currentData.machineAssignCount || 0, color: "#10b981" },
+               { label: "Setup/Alteration", value: currentData.setupAlterationCount || 0, color: "#8b5cf6" },
+               { label: "Other Workers", value: currentData.otherWorkersCount, color: "#2563eb" },
+               { label: "Web Transport", value: currentData.webTransportCount, color: "#7c3aed" },
+               { label: "Re-Work", value: currentData.reWorkCount, color: "#ea580c" },
+               { label: "Warp Beam", value: currentData.warpBeamCount, color: "#0891b2" },
+               { label: "TL", value: currentData.tlCount || 0, color: "#ec4899" },
+               { label: "Greige/Boil", value: currentData.greigeBoilCount || 0, color: "#6366f1" },
+               { label: "Yarn Prep", value: currentData.yarnPreparationCount || 0, color: "#14b8a6" }
+               
              ].map((item, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>{item.label}:</span>
-                    <span style={{ fontWeight: 'bold', color: item.color }}>{item.value}</span>
-                </div>
+               <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                   <span>{item.label}:</span>
+                   <span style={{ fontWeight: 'bold', color: item.color }}>{item.value}</span>
+               </div>
              ))}
             
             <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '6px', marginTop: '4px', borderTop: '1px solid #e5e7eb' }}>
@@ -1033,6 +1039,14 @@ function SetupView(props) {
               <Grid3x3 size={20} /> Machine Map
             </h2>
             <div style={{ display: 'flex', gap: '4px' }}>
+              {/* Fullscreen Button */}
+              <button 
+                onClick={() => setShowFullScreenMap(true)} 
+                style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #2563eb', background: '#2563eb', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 'bold', fontSize: '12px' }}
+              >
+                <Maximize size={14} /> Full Screen
+              </button>
+
               <button onClick={() => scrollMap('left')} disabled={fitMap} style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid #d1d5db', background: fitMap ? '#f3f4f6' : 'white', cursor: fitMap ? 'not-allowed' : 'pointer', opacity: fitMap ? 0.5 : 1 }}>
                 <ChevronLeft size={14} />
               </button>
@@ -1073,8 +1087,67 @@ function SetupView(props) {
         </div>
       </div>
 
+      {/* FULLSCREEN OVERLAY MODAL */}
+      {showFullScreenMap && (
+        <div style={{ position: 'fixed', inset: 0, background: 'white', zIndex: 9999, display: 'flex', flexDirection: 'column' }}>
+          {/* Header Bar */}
+          <div style={{ padding: '12px 20px', background: '#f3f4f6', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', color: '#1f2937' }}>
+              <Maximize size={20} /> Full Screen Machine Map
+            </h2>
+            <button 
+              onClick={() => setShowFullScreenMap(false)}
+              style={{ padding: '8px 16px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <X size={18} /> Close
+            </button>
+          </div>
+          
+          {/* Responsive SVG Container */}
+          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#ffffff', padding: '10px' }}>
+            <svg 
+              viewBox="0 0 900 1200" 
+              preserveAspectRatio="xMidYMid meet" 
+              style={{ width: '100%', height: '100%', maxHeight: '100vh', maxWidth: '100vw' }}
+            >
+              {/* Reuse logic for drawing connections */}
+              {drawZoneConnections()}
+              {/* Reuse logic for drawing machines */}
+              {machines.map(machine => {
+                const zone = getZoneForMachine(machine.id);
+                const assignedMemberIds = currentData.assignments[machine.id] || [];
+                const machineStatus = machineStatuses[machine.id];
+                const fillColor = machineStatus ? STATUS_COLORS[machineStatus] : (zone ? zone.color : '#e5e7eb');
+                
+                return (
+                  <g key={machine.id}>
+                    <rect 
+                      x={machine.x - 45} 
+                      y={machine.y - 35} 
+                      width="90" 
+                      height="70" 
+                      fill={fillColor} 
+                      stroke={assignedMemberIds.length > 0 ? '#10b981' : '#9ca3af'} 
+                      strokeWidth="2" 
+                      rx="8" 
+                      style={{ cursor: 'pointer' }} 
+                      onClick={() => { setSelectedMachine(machine); setShowMemberModal(true); }} // Allow interaction in fullscreen
+                    />
+                    <text x={machine.x} y={machine.y - 15} textAnchor="middle" style={{ fontSize: '11px', fontWeight: 'bold', fill: machineStatus ? 'white' : '#374151', pointerEvents: 'none' }}>{machine.id}</text>
+                    <text x={machine.x} y={machine.y} textAnchor="middle" style={{ fontSize: '10px', fill: machineStatus ? 'white' : '#6b7280', pointerEvents: 'none' }}>{assignedMemberIds.length > 0 ? `${assignedMemberIds.length}/5` : '0/5'}</text>
+                    {assignedMemberIds.length > 0 && (
+                      <text x={machine.x} y={machine.y + 15} textAnchor="middle" style={{ fontSize: '20px', fill: machineStatus ? 'white' : '#059669', pointerEvents: 'none', fontWeight: '600' }}>{getMemberEPF(assignedMemberIds[0]).substring(0, 8)}</text>
+                    )}
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+        </div>
+      )}
+
       {showMemberModal && selectedMachine && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
           <div style={{ background: 'white', borderRadius: '8px', padding: '24px', maxWidth: '28rem', width: '90%', margin: '0 16px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>Assign to {selectedMachine.id}</h3>
