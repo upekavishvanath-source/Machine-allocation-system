@@ -3,9 +3,11 @@ import {
   Users, Monitor, Grid3x3, Eye, Trash2, Plus, X, Clock, RefreshCw, 
   Wrench, Code, Edit, XCircle, Sun, Moon, Save, UserCheck, 
   AlertCircle, Settings, Move, Download, Play, Plane, Maximize, Minimize,
-  ChevronLeft, ChevronRight, ChevronUp, ChevronDown, RotateCcw, Lock
+  ChevronLeft, ChevronRight, ChevronUp, ChevronDown, RotateCcw, Lock,
+  Camera // <--- NEW: Imported Camera Icon
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
+import html2canvas from 'html2canvas'; // <--- NEW: Imported html2canvas
 
 // ============================================
 // APP: MACHINE MANAGER (PASSWORD PROTECTED EDITOR)
@@ -37,8 +39,9 @@ function App() {
   const [newZoneColor, setNewZoneColor] = useState('#fef3c7');
   const [fitMap, setFitMap] = useState(false);
   
-  // NEW: Fullscreen State
+  // NEW: Fullscreen State & Ref
   const [showFullScreenMap, setShowFullScreenMap] = useState(false);
+  const fullScreenMapRef = useRef(null); // <--- NEW: Ref for screenshot
 
   // --- PASSWORD STATE ---
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -64,11 +67,11 @@ function App() {
 
   const STATUS_COLORS = {
     'no-order': '#92400e',
-    'development': '#eab308',
+    'development': '#086aea',
     'setup': '#3b82f6',
-    'alteration': '#ef4444',
+    'alteration': '#c9d338',
     'running': '#10b981',
-    'pilot': '#f97316'
+    'pilot': '#f94316'
   };
 
   const getDefaultMachineLayout = () => {
@@ -85,6 +88,39 @@ function App() {
       { id: 'JC-01', x: 700, y: 880 }, { id: 'JC-03', x: 700, y: 800 }, { id: 'JL-06', x: 700, y: 720 }, { id: 'JL-05', x: 700, y: 640 },
       { id: 'TX-10', x: 700, y: 560 }, { id: 'JL-04', x: 550, y: 640 }, { id: 'JL-02', x: 550, y: 560 }
     ];
+  };
+
+  // --- NEW: SCREENSHOT FUNCTION ---
+  const handleScreenshot = async () => {
+    if (fullScreenMapRef.current) {
+      setSaveStatus('📸 Processing Screenshot...');
+      try {
+        // Wait a brief moment to ensure rendering is complete
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        const canvas = await html2canvas(fullScreenMapRef.current, {
+          backgroundColor: '#ffffff',
+          scale: 2, // Higher quality
+          logging: false,
+          useCORS: true
+        });
+
+        const image = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        const dateStr = new Date().toISOString().split('T')[0];
+        link.href = image;
+        link.download = `Map_Allocation_${activeShift}_${dateStr}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        setSaveStatus('✅ Screenshot Saved!');
+        setTimeout(() => setSaveStatus(''), 3000);
+      } catch (error) {
+        console.error('Screenshot failed:', error);
+        setSaveStatus('❌ Screenshot Failed');
+      }
+    }
   };
 
   const getSortedMachines = (machineList) => {
@@ -436,7 +472,7 @@ function App() {
           tlCount: 0,
           greigeBoilCount: 0,
           yarnPreparationCount: 0,
-           
+            
           assignments: {}
         }
       }));
@@ -512,10 +548,10 @@ function App() {
   const downloadFinalOverviewCSV = () => {
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-     
+      
     let csvContent = "data:text/csv;charset=utf-8,";
     csvContent += "Date,Shift,Day/Night,Total Attendance,Other Workers,Web Transport,Re-Work,Warp Beam,Machine Assign,Setup/Alteration,TL,Greige/Boil,Yarn Preparation,Pilot,Setup Count,Alteration Count,Running Count,Pilot Count,Man to Machine Ratio\n";
-     
+      
     ['A', 'B', 'C'].forEach(shift => {
       const d = shiftData[shift];
       
@@ -555,7 +591,7 @@ function App() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-     
+      
     setSaveStatus('✅ Final Overview CSV downloaded!');
     setTimeout(() => setSaveStatus(''), 3000);
   };
@@ -748,7 +784,8 @@ function App() {
     addNewMachine, deleteMachine, addNewZone, deleteZone, assignMachineToZone,
     removeMachineFromZone, downloadFinalOverviewCSV,
     fitMap, setFitMap, getSortedMachines, clearShiftData,
-    showFullScreenMap, setShowFullScreenMap, drawMachineNode // Added drawMachineNode to props
+    showFullScreenMap, setShowFullScreenMap, drawMachineNode,
+    fullScreenMapRef, handleScreenshot // <--- NEW: Props passed down
   };
 
   return (
@@ -949,7 +986,8 @@ function SetupView(props) {
     updateWorkerCount, addTeamMember, removeTeamMember, assignMemberToMachine, setMachineStatus,
     getMemberEPF, getZoneForMachine, getShiftColor, getRemainingWorkers,
     drawZoneConnections, STATUS_COLORS, getCurrentShiftData, fitMap, getSortedMachines,
-    showFullScreenMap, setShowFullScreenMap, drawMachineNode // Destructure new prop
+    showFullScreenMap, setShowFullScreenMap, drawMachineNode,
+    fullScreenMapRef, handleScreenshot // <--- NEW: Props
   } = props;
 
   const currentData = getCurrentShiftData();
@@ -1060,10 +1098,10 @@ function SetupView(props) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
             {[
               { id: 'setup', label: 'Setup', icon: Wrench, color: '#3b82f6' },
-              { id: 'development', label: 'Dev', icon: Code, color: '#eab308' },
-              { id: 'alteration', label: 'Alt', icon: Edit, color: '#ef4444' },
+              { id: 'development', label: 'Dev', icon: Code, color: '#0817ea' },
+              { id: 'alteration', label: 'Alt', icon: Edit, color: '#c9d338' },
               { id: 'running', label: 'Run', icon: Play, color: '#10b981' },
-              { id: 'pilot', label: 'Pilot', icon: Plane, color: '#f97316' },
+              { id: 'pilot', label: 'Pilot', icon: Plane, color: '#f94316' },
               { id: 'no-order', label: 'No Ord', icon: XCircle, color: '#92400e' }
             ].map(status => (
               <button key={status.id} onClick={() => { setActiveStatusFilter(status.id); setShowStatusMenu(true); }} style={{ padding: '8px 10px', borderRadius: '6px', border: 'none', cursor: 'pointer', background: status.color, color: 'white', fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
@@ -1141,7 +1179,7 @@ function SetupView(props) {
         </div>
       </div>
 
-      {/* FULLSCREEN OVERLAY MODAL */}
+      {/* FULLSCREEN OVERLAY MODAL with SCREENSHOT */}
       {showFullScreenMap && (
         <div style={{ position: 'fixed', inset: 0, background: 'white', zIndex: 9999, display: 'flex', flexDirection: 'column' }}>
           {/* Header Bar */}
@@ -1149,16 +1187,26 @@ function SetupView(props) {
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', color: '#1f2937' }}>
               <Maximize size={20} /> Full Screen Machine Map
             </h2>
-            <button 
-              onClick={() => setShowFullScreenMap(false)}
-              style={{ padding: '8px 16px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              <X size={18} /> Close
-            </button>
+            <div style={{ display: 'flex', gap: '12px' }}>
+                {/* --- NEW SCREENSHOT BUTTON --- */}
+                <button 
+                  onClick={handleScreenshot}
+                  style={{ padding: '8px 16px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Camera size={18} /> Capture Map
+                </button>
+                {/* ----------------------------- */}
+                <button 
+                  onClick={() => setShowFullScreenMap(false)}
+                  style={{ padding: '8px 16px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <X size={18} /> Close
+                </button>
+            </div>
           </div>
           
-          {/* Responsive SVG Container */}
-          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#ffffff', padding: '10px' }}>
+          {/* Responsive SVG Container - ADDED REF HERE */}
+          <div ref={fullScreenMapRef} style={{ flex: 1, overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#ffffff', padding: '10px' }}>
             <svg 
               viewBox="0 0 900 1200" 
               preserveAspectRatio="xMidYMid meet" 
